@@ -1,0 +1,26 @@
+// The server's wire types, from the plugin's contract.
+
+export type {
+  ArchivedSession,
+  AttentionKind,
+  Decision,
+  DirListing,
+  HostInfo,
+  HostSettings,
+  LaunchResult,
+  LoginStart,
+  LogoutResult,
+  MemoryAction,
+  MoveProgress,
+  PairResponse,
+  ProfileAccount,
+  RemoteAccount,
+  RemoteSession,
+  RenameSessionResult,
+  Side,
+  TmuxWindow,
+  TransferPlan,
+  TransferReport,
+  WindowKey,
+  WindowScreen,
+} from '../../types'

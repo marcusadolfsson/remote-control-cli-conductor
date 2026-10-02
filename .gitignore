@@ -1,0 +1,8 @@
+/target
+.DS_Store
+# What Claude Code writes beside a plugin it loads or tests.
+plugin/.claude-plugin/types/
+plugin/tsconfig.json
+# Linked in from a private notes repo, if any.
+/CLAUDE.md
+/.claude/

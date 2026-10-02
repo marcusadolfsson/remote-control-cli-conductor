@@ -1,0 +1,11 @@
+{
+  "name": "remote-control-cli-conductor",
+  "owner": { "name": "Marcus Adolfsson" },
+  "plugins": [
+    {
+      "name": "conductor",
+      "source": "./plugin",
+      "description": "Your Linux hosts' Claude Code accounts and sessions, in a Claude Code pane"
+    }
+  ]
+}

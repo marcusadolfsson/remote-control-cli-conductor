@@ -1,0 +1,82 @@
+name: Release
+
+# Push a tag `v<version>` (the workspace's and the plugin's version) to build
+# the server for Linux and publish a release with it. The plugin installs from
+# the repository itself, through its marketplace.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  # Statically linked (musl), so it runs on any distribution; built natively
+  # on each architecture.
+  server:
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-latest
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: '${{ matrix.arch }}-unknown-linux-musl'
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          key: server-${{ matrix.arch }}
+
+      # ring compiles C with musl-gcc for the musl target.
+      - name: Install musl
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Build
+        run: cargo build --release --locked -p remote-control-conductor-server --target ${{ matrix.arch }}-unknown-linux-musl
+
+      - name: Package
+        run: |
+          out=remote-control-conductor-server-${{ matrix.arch }}-linux
+          cp target/${{ matrix.arch }}-unknown-linux-musl/release/remote-control-conductor-server "$out"
+          "./$out" --version
+          sha256sum "$out" > "$out.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server-${{ matrix.arch }}
+          path: remote-control-conductor-server-*
+
+  # One release with both servers, never one without all its files.
+  publish:
+    needs: server
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: server-*
+          merge-multiple: true
+
+      - name: Publish
+        run: |
+          gh release create "$GITHUB_REF_NAME" remote-control-conductor-server-* \
+            --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes "$(cat <<'NOTES'
+          **Claude Code plugin:** `claude plugin marketplace add marcusadolfsson/remote-control-cli-conductor`, then `claude plugin install conductor@remote-control-cli-conductor`.
+
+          **Linux host:** the server for x86_64 or arm64, then its setup:
+
+          ```sh
+          mkdir -p ~/.local/bin && curl -fsSL https://github.com/marcusadolfsson/remote-control-cli-conductor/releases/latest/download/remote-control-conductor-server-$(uname -m)-linux -o ~/.local/bin/remote-control-conductor-server && chmod +x ~/.local/bin/remote-control-conductor-server
+          remote-control-conductor-server setup
+          ```
+
+          Each server binary has a `.sha256` beside it.
+          NOTES
+          )"

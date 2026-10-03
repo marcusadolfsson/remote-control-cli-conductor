@@ -94,32 +94,31 @@ matches the one setup printed. For a new code at any time, run
 
 ## Use
 
-| | |
-|---|---|
-| `/remote-control-cli-servers` | Opens the pane. Every host, profile and session has a **⋯** menu of its actions, each with a letter that presses it. |
-| `/remote-control-cli-servers pair` | Pairs another host. |
-| `/remote-control-cli-servers text` | The same as the pane, as text. |
-| `/remote-control-cli-servers demo` | Swaps in three made-up hosts, for screenshots. Again to swap back. |
-| Ask Claude | Its tools are `mcp__remote-control-cli-servers__*`: `list_profiles`, `list_sessions`, `new_session`, `resume_session`, `restart_outdated`, `read_window`, `send_to_window`, `move_session`, and more. |
+- **`/remote-control-cli-servers`** opens the pane. Every host, profile and session has a **⋯**
+  menu of its actions, each with a letter that presses it.
+- **`/remote-control-cli-servers pair`** pairs another host.
+- **`/remote-control-cli-servers text`** prints the same as the pane, as text.
+- **`/remote-control-cli-servers demo`** swaps in three made-up hosts, for screenshots. Run it again
+  to swap back.
+- **Ask Claude.** Its tools are `mcp__remote-control-cli-servers__*`: `list_profiles`,
+  `list_sessions`, `new_session`, `resume_session`, `restart_outdated`, `read_window`,
+  `send_to_window`, `move_session`, and more.
 
 ## How it works
 
 ```mermaid
-flowchart LR
+flowchart TB
   subgraph mac["Your Mac"]
-    cc["Claude Code<br/>+ the plugin"]
-    kc[("Keychain<br/>host tokens")]
+    direction LR
+    kc[("Keychain")] -.-> cc["Claude Code + the plugin"]
   end
   subgraph host["Each Linux host"]
-    srv["remote-control-<br/>conductor-server"]
-    tmux["tmux"]
-    s1["Claude Code sessions<br/>one folder per account"]
+    direction LR
+    srv["remote-control-conductor-server"] --> tmux["tmux"] --> s1["Claude Code sessions"]
   end
-  apps["Claude apps<br/>phone · desktop · claude.ai"]
-  cc -- "HTTPS, pinned key<br/>tailnet / VPN / LAN" --> srv
-  kc -.-> cc
-  srv --> tmux --> s1
-  s1 -- "Remote Control" --> apps
+  apps["Claude apps: phone, desktop, claude.ai"]
+  mac -- "HTTPS, pinned key, over a tailnet, VPN or LAN" --> host
+  host -- "Remote Control" --> apps
 ```
 
 The plugin only talks to your hosts. The sessions talk to Anthropic as any Claude Code session

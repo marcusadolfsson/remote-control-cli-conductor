@@ -3,9 +3,15 @@
   "displayName": "Remote Control CLI Servers",
   "version": "0.7.5",
   "description": "Your Linux hosts' Claude Code accounts and sessions, in a Claude Code pane",
-  "author": { "name": "Marcus Adolfsson" },
+  "author": {
+    "name": "Marcus Adolfsson"
+  },
   "homepage": "https://github.com/marcusadolfsson/remote-control-cli-servers",
   "repository": "https://github.com/marcusadolfsson/remote-control-cli-servers",
+  "documentationUrl": "https://github.com/marcusadolfsson/remote-control-cli-servers/blob/main/plugin/README.md",
+  "supportUrl": "https://github.com/marcusadolfsson/remote-control-cli-servers/issues",
+  "privacyPolicyUrl": "https://github.com/marcusadolfsson/remote-control-cli-servers/blob/main/PRIVACY.md",
+  "termsOfServiceUrl": "https://github.com/marcusadolfsson/remote-control-cli-servers/blob/main/TERMS.md",
   "license": "MIT",
   "types": "./types/index.d.ts"
 }

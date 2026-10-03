@@ -98,8 +98,22 @@ function Pill(ui: Ui, text: string, tone: Tone) {
   )
 }
 
+/** The pane's own ⋯ menu, in the header. */
+function paneMenu(act: Act): Array<MenuItem> {
+  return [
+    { value: 'refresh', label: 'Refresh', hotkey: 'r', run: act.refresh },
+    {
+      value: 'pair',
+      label: 'Pair a host…',
+      hotkey: 'p',
+      run: () => act.openDialog({ kind: 'pair', code: '', label: '', error: null, isBusy: false }),
+    },
+    { value: 'settings', label: 'Settings…', hotkey: 's', run: act.openSettings },
+  ]
+}
+
 function Header(ui: Ui, model: OverviewModel, act: Act) {
-  const { Box, Button, Text } = ui
+  const { Box, Text } = ui
   const { waiting } = totals(model.view)
   const offline = model.view.hosts.filter((known) => known.error).length
   return (
@@ -110,16 +124,7 @@ function Header(ui: Ui, model: OverviewModel, act: Act) {
           <Text bold wrap="truncate-end">Remote Control CLI Servers</Text>
           {model.view.isDemo && Pill(ui, 'DEMO', 'permission')}
         </Box>
-        <Box gap={1} flexShrink={0} alignItems="center">
-          <Button key="refresh" plain dimColor hotkey="r" label="Refresh" onPress={act.refresh} />
-          <Button key="settings" plain dimColor hotkey="s" label="Settings" onPress={act.openSettings} />
-          <Button
-            key="pair"
-            hotkey="p"
-            label="+ Pair a host"
-            onPress={() => act.openDialog({ kind: 'pair', code: '', label: '', error: null, isBusy: false })}
-          />
-        </Box>
+        {Menu(ui, 'pm', paneMenu(act), model, act)}
       </Box>
       <Text dimColor>
         {model.view.isLoading ? '◐ Reading your hosts…' : age(model.view.updatedAt, model.now)}

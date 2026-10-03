@@ -340,7 +340,8 @@ describe('the hosts pane', () => {
       await d.unmount()
 
       // Pairing reads the code as it's typed.
-      await pane.press({ key: 'pair' })
+      await pane.press({ key: 'pm' })
+      await pane.press({ key: 'mi-pm-pair' })
       d = await dialog()
       await d.input({ key: 'code', text: 'not a code', kind: 'change' })
       expect(await d.find({ type: 'Text', text: /isn't a pairing code/ }), 'check 9').toBeDefined()
@@ -415,7 +416,8 @@ describe('the band above the prompt', () => {
         requestId: 'conductor-hosts',
         props: paneProps('CLI Servers', 100, 'dock'),
       })
-      await pane.press({ key: 'settings' })
+      await pane.press({ key: 'pm' })
+      await pane.press({ key: 'mi-pm-settings' })
       const settings = await $.ui.mount({
         plugin: 'remote-control-cli-servers',
         surface,

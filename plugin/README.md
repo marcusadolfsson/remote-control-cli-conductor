@@ -19,14 +19,15 @@ gets the same as tools.
 
 ## Use
 
-- `/remote-control-cli-servers` opens the pane: every host as a card, its profiles and their
+- `/remote-control-cli-servers` opens the pane, with Refresh, Pair a host and Settings in the ⋯
+  menu at its top: every host as a card, its profiles and their
   sessions. Each has a ⋯ menu of its actions, each with a letter that presses it while the menu is
   open. The pane reads the hosts again every 15 s while it's open.
 - **The band above the prompt** shows the hosts in one line: how many sessions are waiting for
   you, then each host's running sessions, or that it's offline. Press `1` in an empty prompt to
   open the pane (or close it), or the waiting session's tmux window when only one is waiting.
-  While the band is on, the plugin reads the hosts every 30 s. Turn it off in the pane's
-  **Settings** (`s`), which also turns demo mode on and off.
+  While the band is on, the plugin reads the hosts every 30 s. Turn it off in **Settings**, in
+  the ⋯ menu at the top of the pane, which also turns demo mode on and off.
 - `/remote-control-cli-servers pair` opens the pane with the pairing dialog.
 - `/remote-control-cli-servers text` answers as text, for `claude -p`.
 - `/remote-control-cli-servers demo` swaps in three made-up hosts, for screenshots; again to swap back.

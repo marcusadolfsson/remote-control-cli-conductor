@@ -698,7 +698,7 @@ function WindowDialog(
   region: RenderElement | null,
 ) {
   const { Box, Button, Code, Input, Text } = ui
-  // The desktop doesn't draw a Client region yet: there the screen is shown, and the keys and the
+  // The desktop doesn't draw a live region yet: there the screen is shown, and the keys and the
   // Type field below send input. The terminal's region (`region`) takes keys typed straight into it.
   const isDesktop = ui.surface === 'desktop'
   const screen = shownScreen(d)

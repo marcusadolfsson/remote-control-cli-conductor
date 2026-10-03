@@ -1883,12 +1883,11 @@ export const register: Register = (on) => {
       const { Text } = ui
       return <Text dimColor>Nothing to show.</Text>
     }
-    // The tmux window's live region, in the terminal: drawn here, where its module path is read.
-    const { Client } = $.ui.resolve(e)
     const regionProps = windowRegionProps(d, e.surface)
     if (!regionProps) return Dialog(ui, d, await read($, view), dialogActions($), null)
-    // Called, not written as JSX: JSX would hand Client to h, and the directory reads the path off a call.
-    const region = Client({ key: 'term', module: './terminal.tsx', props: regionProps })
+    // The tmux window's live region, in the terminal: one call with the surface module's fixed path,
+    // straight off the resolved table, so the directory reads the path where the element is made.
+    const region = $.ui.resolve(e).Client({ key: 'term', module: './terminal.tsx', props: regionProps })
     return Dialog(ui, d, await read($, view), dialogActions($), region)
   })
 }

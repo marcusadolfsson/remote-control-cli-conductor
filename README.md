@@ -20,6 +20,16 @@ puts all of it in a pane beside the conversation:
 
 It works in the Claude Code terminal and in the Code tab of the Claude desktop app.
 
+<p>
+  <img src="docs/screenshots/pane.png" alt="The Conductor pane: three hosts as cards, each with its profiles and their sessions" width="400">
+  <img src="docs/screenshots/session-menu.png" alt="A session's menu: open in the Claude app or on claude.ai, its tmux window, restart to update, stop, rename, move" width="400">
+</p>
+<p>
+  <img src="docs/screenshots/tmux-window.png" alt="A session's live tmux window, waiting on Claude's folder-trust question, with keys to answer it" width="400">
+</p>
+
+<sub>Screenshots from the Claude desktop app in demo mode (`/conductor demo`): the hosts, accounts and sessions are made up.</sub>
+
 ## Install
 
 **On each Linux host:** tmux 3.0 or newer, [Claude Code](https://code.claude.com), then the server

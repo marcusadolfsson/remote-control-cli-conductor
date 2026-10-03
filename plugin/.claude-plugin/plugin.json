@@ -1,7 +1,7 @@
 {
   "name": "remote-control-cli-servers",
   "displayName": "Remote Control CLI Servers",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Remote Control CLI Conductor: your Linux hosts' Claude Code accounts and sessions, in a Claude Code pane",
   "author": { "name": "Marcus Adolfsson" },
   "homepage": "https://github.com/marcusadolfsson/remote-control-cli-conductor",

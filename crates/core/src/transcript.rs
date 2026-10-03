@@ -1,72 +1,58 @@
 //! Reading Claude Code transcripts: `<config>/projects/<project>/<id>.jsonl`.
 //!
-//! A transcript is a JSONL file Claude Code appends a record to as the session
-//! goes: messages (`user`, `assistant`, `attachment`, `system`, most carrying
-//! `timestamp`, `cwd` and `isSidechain`) and metadata (`custom-title`,
-//! `ai-title`, `last-prompt`, `relocated`) that is re-appended whenever it
-//! changes, so the last record of each kind is the current one. A long-running
-//! session's reaches hundreds of megabytes, so a transcript read before is read
-//! on from where reading stopped ([`read_on`]), and only lines that can hold a
-//! field read here are decoded at all.
+//! Shared by the server and its clients, so it depends on nothing but std,
+//! serde and flate2. Everything here reads Claude Code internals, which can
+//! change between versions.
 //!
-//! The reading follows ai-profiles' own (`src/sessions/claude/transcript.rs`
-//! in the app), which the server can't use as it is: it lives in the app, with
-//! its cache.
-//!
-//! Everything here reads Claude Code internals, which can change between
-//! versions.
+//! A transcript is read once, then read on from where it stopped as Claude
+//! appends to it ([`read_transcript_from`]): a running session's grows to
+//! hundreds of megabytes, and is listed again every few seconds.
 
-use std::collections::hash_map::DefaultHasher;
+use std::borrow::Cow;
 use std::collections::BTreeSet;
-use std::fs::{self, File};
-use std::hash::Hasher;
+use std::fs;
 use std::io::{self, BufRead, BufReader, Read, Seek, SeekFrom};
-use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
-use std::time::SystemTime;
 
+use serde::de::IgnoredAny;
 use serde::Deserialize;
-use serde_json::value::RawValue;
+
+/// How much of the first prompt is kept: enough for a title, cut by [`short_line`].
+const FIRST_PROMPT_CHARS: usize = 200;
 
 /// What a transcript says about its session.
 #[derive(Debug, Default, Clone)]
 pub struct TranscriptInfo {
-    /// The folder the session last worked in: the `cwd` of its last message,
-    /// or where it was last relocated to.
     pub cwd: Option<String>,
-    /// The name set with `/rename`: the last `custom-title` record.
     pub custom_title: Option<String>,
-    /// The title Claude generated: the last `ai-title` record.
     pub ai_title: Option<String>,
-    /// The first text the user typed, cut to [`FIRST_PROMPT_MAX_CHARS`].
-    pub first_prompt: Option<String>,
-    /// The last thing typed into the session: the last `last-prompt` record.
     pub last_prompt: Option<String>,
-    /// The first record's `timestamp`.
+    /// The first thing the user typed in the main conversation.
+    pub first_prompt: Option<String>,
     pub first_timestamp: Option<String>,
-    /// The last record's `timestamp`: when the session was last used.
+    /// The latest record's time: when the session was last used.
     pub last_timestamp: Option<String>,
     /// Claude replied at least once.
     pub has_reply: bool,
     /// Plan slugs the session wrote, `plans/<slug>.md`.
     pub slugs: BTreeSet<String>,
-    /// A record of a subagent's conversation was read.
-    sidechain_seen: bool,
-    /// A record of the session's own conversation was read.
-    main_seen: bool,
+    /// A message of the main conversation was seen (`isSidechain` false or absent).
+    pub has_main: bool,
+    /// A message of a subagent's conversation was seen (`isSidechain` true).
+    pub has_sidechain: bool,
 }
 
 impl TranscriptInfo {
     /// Opened and closed without anything happening, like Claude's own
     /// `/resume` hides.
     pub fn is_empty(&self) -> bool {
-        !self.has_reply && self.last_prompt.is_none()
+        !self.has_reply && self.last_prompt.is_none() && self.first_prompt.is_none()
     }
 
-    /// The transcript holds a subagent's records only: not a session of its
-    /// own.
-    pub fn subagent_only(&self) -> bool {
-        self.sidechain_seen && !self.main_seen
+    /// A subagent's own conversation, filed where sessions are: no session of
+    /// its own to list.
+    pub fn is_subagent_only(&self) -> bool {
+        self.has_sidechain && !self.has_main
     }
 
     pub fn title(&self) -> Option<String> {
@@ -75,7 +61,7 @@ impl TranscriptInfo {
 
     /// What to call the session where nothing has named it better: its
     /// `/rename` name (the bool is true: the user chose it), else Claude's
-    /// generated title, else its last prompt cut to a short line.
+    /// generated title, else its last prompt, else its first, cut to a short line.
     pub fn name(&self) -> Option<(String, bool)> {
         if let Some(title) = &self.custom_title {
             return Some((title.clone(), true));
@@ -83,114 +69,44 @@ impl TranscriptInfo {
         self.ai_title
             .clone()
             .or_else(|| self.last_prompt.as_deref().and_then(short_line))
+            .or_else(|| self.first_prompt.as_deref().and_then(short_line))
             .map(|name| (name, false))
-    }
-
-    /// Take in the record on `line`. A line that isn't UTF-8, or isn't a
-    /// record, like one Claude Code is still writing, is skipped, as is one
-    /// without a field read here.
-    fn read(&mut self, line: &[u8]) {
-        let Ok(line) = std::str::from_utf8(line) else {
-            return;
-        };
-        if !MARKERS.iter().any(|marker| line.contains(marker)) {
-            return;
-        }
-        let Ok(record) = serde_json::from_str::<Record>(line) else {
-            return;
-        };
-        match record.is_sidechain {
-            Some(true) => self.sidechain_seen = true,
-            Some(false) => self.main_seen = true,
-            None => {}
-        }
-        if record.timestamp.is_some() {
-            if self.first_timestamp.is_none() {
-                self.first_timestamp.clone_from(&record.timestamp);
-            }
-            self.last_timestamp = record.timestamp;
-        }
-        if let Some(slug) = record
-            .slug
-            .filter(|slug| is_safe_name(slug) && !slug.starts_with('.'))
-        {
-            self.slugs.insert(slug);
-        }
-        match record.kind.as_deref() {
-            Some(kind @ ("user" | "assistant")) => {
-                if record.cwd.is_some() {
-                    self.cwd = record.cwd;
-                }
-                if kind == "assistant" {
-                    self.has_reply = true;
-                }
-                let typed = kind == "user" && record.is_sidechain != Some(true) && !record.is_meta;
-                if typed && self.first_prompt.is_none() {
-                    self.first_prompt = record.message.and_then(first_text);
-                }
-            }
-            Some("custom-title") => {
-                self.custom_title = record.custom_title.or(self.custom_title.take());
-            }
-            Some("ai-title") => self.ai_title = record.ai_title.or(self.ai_title.take()),
-            Some("last-prompt") => {
-                self.last_prompt = record.last_prompt.or(self.last_prompt.take());
-            }
-            Some("relocated") => self.cwd = record.relocated_cwd.or(self.cwd.take()),
-            _ => {}
-        }
     }
 }
 
-/// How much of the first prompt is kept.
-const FIRST_PROMPT_MAX_CHARS: usize = 200;
-
-/// A line is only decoded if it contains one of these: every record read here
-/// carries one, and decoding the rest (tool output, file snapshots) is most of
-/// the cost of reading a transcript.
-const MARKERS: [&str; 8] = [
-    "\"timestamp\"",
-    "\"slug\"",
-    "\"custom-title\"",
-    "\"ai-title\"",
-    "\"last-prompt\"",
-    "\"relocated\"",
-    "\"type\":\"user\"",
-    "\"type\":\"assistant\"",
-];
-
-/// The fields of a transcript record read here. Everything else is skipped
-/// without being built.
+/// The few fields of a transcript line that matter here, borrowed from the
+/// line where they need no unescaping. Everything else, a message's content
+/// included, is skipped over without being built.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
-struct Record<'a> {
-    #[serde(rename = "type")]
-    kind: Option<String>,
-    timestamp: Option<String>,
-    cwd: Option<String>,
-    /// The record belongs to a subagent's conversation, not the session's own.
-    is_sidechain: Option<bool>,
-    /// A message Claude Code added on the user's behalf, not one they typed.
-    #[serde(default)]
-    is_meta: bool,
+struct Line<'a> {
+    #[serde(rename = "type", borrow)]
+    kind: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    cwd: Option<Cow<'a, str>>,
     custom_title: Option<String>,
     ai_title: Option<String>,
     last_prompt: Option<String>,
-    /// Of a `relocated` record: the folder the session moved to.
-    relocated_cwd: Option<String>,
-    slug: Option<String>,
-    /// Of a message, as written: read only when it may hold the first prompt.
     #[serde(borrow)]
-    message: Option<&'a RawValue>,
+    slug: Option<Cow<'a, str>>,
+    #[serde(borrow)]
+    timestamp: Option<Cow<'a, str>>,
+    is_sidechain: Option<bool>,
+    is_meta: Option<bool>,
+    message: Option<IgnoredAny>,
 }
 
-/// A user message, once it may hold the first prompt.
+/// A user line once more, for its message: read only until the first prompt is found.
+#[derive(Deserialize)]
+struct UserLine {
+    message: Option<UserMessage>,
+}
+
 #[derive(Deserialize)]
 struct UserMessage {
-    content: Content,
+    content: Option<Content>,
 }
 
-/// A message's content: plain text, or blocks (text, images, tool results).
 #[derive(Deserialize)]
 #[serde(untagged)]
 enum Content {
@@ -205,206 +121,160 @@ struct Block {
     text: Option<String>,
 }
 
-/// The text of the user's `message`, trimmed and cut to
-/// [`FIRST_PROMPT_MAX_CHARS`]: its content if plain text, else its first
-/// non-blank text block. `None` for a message with no text, like a tool
-/// result.
-fn first_text(message: &RawValue) -> Option<String> {
-    let message = serde_json::from_str::<UserMessage>(message.get()).ok()?;
-    let text = match message.content {
-        Content::Text(text) => text,
-        Content::Blocks(blocks) => blocks
-            .into_iter()
-            .filter(|block| block.kind.as_deref() == Some("text"))
-            .filter_map(|block| block.text)
-            .find(|text| !text.trim().is_empty())?,
-    };
-    let text = text.trim();
-    if text.is_empty() {
-        return None;
-    }
-    Some(text.chars().take(FIRST_PROMPT_MAX_CHARS).collect())
-}
-
-/// What reading a transcript found, kept to read on from next time.
-#[derive(Debug, Clone)]
-pub struct TranscriptRead {
-    /// The file's inode when read: a file replaced by another is read afresh.
-    inode: u64,
-    len: u64,
-    modified: SystemTime,
-    /// How far it was read: the end of its last whole line.
-    offset: u64,
-    /// Where that last whole line starts.
-    last_line_start: u64,
-    /// A hash of the file's start and of its last whole line, as read: a file
-    /// that no longer has them was rewritten, not appended to. `None` when
-    /// they couldn't be read.
-    fingerprint: Option<u64>,
-    /// What its whole lines up to `offset` say.
-    scan: TranscriptInfo,
-    /// What the whole file says, with a last line still being written.
-    info: TranscriptInfo,
-}
-
-impl TranscriptRead {
-    /// What the transcript says.
-    pub fn info(&self) -> &TranscriptInfo {
-        &self.info
-    }
-
-    /// When the file was last written, as read.
-    pub fn modified(&self) -> SystemTime {
-        self.modified
-    }
-
-    /// The file's size in bytes, as read.
-    pub fn size(&self) -> u64 {
-        self.len
-    }
-}
-
-/// Read the transcript at `path`, gzipped when it ends in `.gz` (as an
-/// archived one does). With `previous`, what an earlier read of it found, a
-/// file that hasn't changed isn't read again, and one that only grew, as a
-/// running session's does, is read on from where that read stopped. A file
-/// replaced by another, cut shorter, or no longer starting or ending its read
-/// part the way it did is read afresh. Claude Code only ever appends to a
-/// transcript; a rewrite that keeps both goes unseen until the file is
-/// replaced or cut shorter.
-pub fn read_on(path: &Path, previous: Option<TranscriptRead>) -> io::Result<TranscriptRead> {
-    let mut file = File::open(path)?;
-    let metadata = file.metadata()?;
-    let (inode, len, modified) = (metadata.ino(), metadata.len(), metadata.modified()?);
-    if let Some(previous) = &previous {
-        if previous.inode == inode && previous.len == len && previous.modified == modified {
-            return Ok(previous.clone());
-        }
-    }
-    if path.extension().is_some_and(|ext| ext == "gz") {
-        let mut scan = TranscriptInfo::default();
-        let reader = BufReader::new(flate2::read::GzDecoder::new(file));
-        let (_, _, tail) = read_lines(reader, &mut scan);
-        return Ok(TranscriptRead {
-            inode,
-            len,
-            modified,
-            offset: len,
-            last_line_start: len,
-            fingerprint: None,
-            info: with_tail(&scan, tail.as_deref()),
-            scan,
-        });
-    }
-    let (start, mut last_line_start, mut scan) = match previous {
-        Some(previous) if grew(&mut file, &previous, inode, len) => {
-            (previous.offset, previous.last_line_start, previous.scan)
-        }
-        _ => (0, 0, TranscriptInfo::default()),
-    };
-    file.seek(SeekFrom::Start(start))?;
-    let mut reader = BufReader::with_capacity(1 << 16, file);
-    let (read, last_line_len, tail) = read_lines(&mut reader, &mut scan);
-    let offset = start + read;
-    if last_line_len > 0 {
-        last_line_start = offset - last_line_len;
-    }
-    Ok(TranscriptRead {
-        inode,
-        len,
-        modified,
-        offset,
-        last_line_start,
-        fingerprint: fingerprint(reader.get_mut(), offset, last_line_start),
-        info: with_tail(&scan, tail.as_deref()),
-        scan,
-    })
-}
-
-/// Read what the Sessions list needs from the transcript at `path`, all of it.
+/// Read what the Sessions list needs from the transcript at `path`, gzipped
+/// when it ends in `.gz`, as an archived one does. Lines that are not JSON
+/// (a write cut short) are skipped. Later lines win: the working folder moves
+/// when a session is relocated, and titles are re-appended when they change.
 pub fn read_transcript(path: &Path) -> io::Result<TranscriptInfo> {
-    read_on(path, None).map(|read| read.info)
-}
-
-/// What `scan` says with `tail`, a last line still being written, if it
-/// already reads as a record.
-fn with_tail(scan: &TranscriptInfo, tail: Option<&[u8]>) -> TranscriptInfo {
-    let mut whole = scan.clone();
-    if let Some(tail) = tail {
-        whole.read(tail);
+    let file = fs::File::open(path)?;
+    if path.extension().is_some_and(|ext| ext == "gz") {
+        let mut info = TranscriptInfo::default();
+        for line in BufReader::new(flate2::read::GzDecoder::new(file)).lines() {
+            apply(&mut info, line?.as_bytes());
+        }
+        return Ok(info);
     }
-    whole
+    read_lines(file, TranscriptInfo::default()).map(|(info, _)| info)
 }
 
-/// Read the lines `reader` holds into `scan`, up to the end of its last whole
-/// line. Returns how many bytes those are and how long the last of them is,
-/// with the line after them that has no end yet, which Claude Code may still
-/// be writing. Reading stops early, as at the end, when the file can't be
-/// read on.
-fn read_lines(mut reader: impl BufRead, scan: &mut TranscriptInfo) -> (u64, u64, Option<Vec<u8>>) {
-    let (mut read, mut last_line_len) = (0, 0);
+/// Read on in a transcript Claude is still appending to: `info` is what the
+/// first `offset` bytes of it said (as this returned them), and only what was
+/// written after is read. A plain `.jsonl` only.
+///
+/// Returns what the whole transcript says, and the offset to read on from
+/// next time: the end of its last complete line. A last line still being
+/// written counts if it already reads as JSON, and is read again once
+/// finished, which changes nothing, since reading a line twice in a row
+/// leaves the same result.
+///
+/// Fails with `InvalidData` when `offset` isn't just past a newline: the
+/// file isn't the one `info` was read from, and needs reading in full.
+pub fn read_transcript_from(
+    path: &Path,
+    info: TranscriptInfo,
+    offset: u64,
+) -> io::Result<(TranscriptInfo, u64)> {
+    let mut file = fs::File::open(path)?;
+    if offset > 0 {
+        file.seek(SeekFrom::Start(offset - 1))?;
+        let mut before = [0u8];
+        file.read_exact(&mut before)?;
+        if before != *b"\n" {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "the transcript changed before where it was read to",
+            ));
+        }
+    }
+    let (info, read) = read_lines(file, info)?;
+    Ok((info, offset + read))
+}
+
+/// Apply every line from where `file` is, and say how many bytes the
+/// complete ones (ending in a newline) took.
+fn read_lines(file: fs::File, mut info: TranscriptInfo) -> io::Result<(TranscriptInfo, u64)> {
+    let mut reader = BufReader::with_capacity(1 << 16, file);
     let mut line = Vec::new();
+    let mut complete = 0u64;
     loop {
         line.clear();
-        match reader.read_until(b'\n', &mut line) {
-            Ok(0) | Err(_) => return (read, last_line_len, None),
-            Ok(_) if line.last() != Some(&b'\n') => return (read, last_line_len, Some(line)),
-            Ok(count) => {
-                read += count as u64;
-                last_line_len = count as u64;
-                scan.read(&line);
-            }
+        let read = reader.read_until(b'\n', &mut line)?;
+        if read == 0 {
+            break;
+        }
+        apply(&mut info, &line);
+        if line.last() == Some(&b'\n') {
+            complete += read as u64;
         }
     }
+    Ok((info, complete))
 }
 
-/// Whether `file`, read before as `previous` and now of `inode` and `len`,
-/// only grew since: it is the same file, no shorter, and still has the start
-/// and the last whole line it had where reading stopped (see [`fingerprint`]).
-fn grew(file: &mut File, previous: &TranscriptRead, inode: u64, len: u64) -> bool {
-    if previous.inode != inode || len < previous.len {
-        return false;
+/// What one transcript line adds to `info`.
+fn apply(info: &mut TranscriptInfo, line: &[u8]) {
+    let Ok(parsed) = serde_json::from_slice::<Line>(line) else {
+        return;
+    };
+    let kind = parsed.kind.as_deref();
+    if matches!(kind, Some("user" | "assistant")) {
+        if parsed.is_sidechain == Some(true) {
+            info.has_sidechain = true;
+        } else {
+            info.has_main = true;
+        }
     }
-    if previous.offset == 0 {
-        return true;
+    match kind {
+        Some("assistant") => info.has_reply = true,
+        Some("custom-title") => {
+            info.custom_title = parsed.custom_title.or(info.custom_title.take())
+        }
+        Some("ai-title") => info.ai_title = parsed.ai_title.or(info.ai_title.take()),
+        Some("last-prompt") => info.last_prompt = parsed.last_prompt.or(info.last_prompt.take()),
+        Some("user")
+            if info.first_prompt.is_none()
+                && parsed.is_sidechain != Some(true)
+                && parsed.is_meta != Some(true)
+                && parsed.message.is_some() =>
+        {
+            info.first_prompt = typed_text(line);
+        }
+        _ => {}
     }
-    previous.fingerprint.is_some()
-        && fingerprint(file, previous.offset, previous.last_line_start) == previous.fingerprint
+    if let Some(cwd) = parsed.cwd {
+        info.cwd = Some(cwd.into_owned());
+    }
+    if let Some(slug) = parsed.slug.filter(|slug| is_safe_name(slug)) {
+        if !info.slugs.contains(slug.as_ref()) {
+            info.slugs.insert(slug.into_owned());
+        }
+    }
+    if let Some(timestamp) = parsed.timestamp {
+        if info.first_timestamp.is_none() {
+            info.first_timestamp = Some(timestamp.to_string());
+        }
+        info.last_timestamp = Some(timestamp.into_owned());
+    }
 }
 
-/// How much of the start of a transcript [`fingerprint`] hashes.
-const FINGERPRINT_HEAD: u64 = 4096;
-
-/// A hash of `file`'s first [`FINGERPRINT_HEAD`] bytes before `offset`, and
-/// of its line from `last_line_start` to `offset`. `None` when they can't be
-/// read.
-fn fingerprint(file: &mut File, offset: u64, last_line_start: u64) -> Option<u64> {
-    let mut hasher = DefaultHasher::new();
-    for (from, to) in [(0, offset.min(FINGERPRINT_HEAD)), (last_line_start, offset)] {
-        let mut bytes = vec![0_u8; usize::try_from(to.checked_sub(from)?).ok()?];
-        file.seek(SeekFrom::Start(from)).ok()?;
-        file.read_exact(&mut bytes).ok()?;
-        hasher.write(&bytes);
+/// What the user typed in a user line: its text, unless it's a tool's result
+/// or something Claude Code wrote for them (a command, a reminder: those start
+/// with a tag), cut to [`FIRST_PROMPT_CHARS`].
+fn typed_text(line: &[u8]) -> Option<String> {
+    let content = serde_json::from_slice::<UserLine>(line)
+        .ok()?
+        .message?
+        .content?;
+    let text = match content {
+        Content::Text(text) => text,
+        Content::Blocks(blocks) => {
+            blocks
+                .into_iter()
+                .find(|block| block.kind.as_deref() == Some("text"))?
+                .text?
+        }
+    };
+    let text = text.trim();
+    if text.is_empty() || text.starts_with('<') {
+        return None;
     }
-    Some(hasher.finish())
+    Some(text.chars().take(FIRST_PROMPT_CHARS).collect())
 }
 
-/// The name set with `/rename` that Claude Code keeps beside the transcript at
-/// `transcript`, in `<slug>/<id>/custom-title.json`, when a transcript record
-/// doesn't carry it. It changes on its own, so it's read each time it's asked
-/// for rather than kept with the transcript's read.
+/// The name Claude Code keeps beside a transcript in `<id>/custom-title.json`
+/// (`{"customTitle": "…"}`), for a session renamed where no record says so.
 pub fn title_file(transcript: &Path) -> Option<String> {
     #[derive(Deserialize)]
     #[serde(rename_all = "camelCase")]
     struct TitleFile {
         custom_title: Option<String>,
     }
-    let id = transcript.file_stem()?;
-    let text = fs::read_to_string(transcript.with_file_name(id).join("custom-title.json")).ok()?;
-    serde_json::from_str::<TitleFile>(&text)
+    let folder = transcript.with_extension("");
+    let text = fs::read(folder.join("custom-title.json")).ok()?;
+    let title = serde_json::from_slice::<TitleFile>(&text)
         .ok()?
-        .custom_title
-        .filter(|title| !title.trim().is_empty())
+        .custom_title?;
+    let title = title.trim();
+    (!title.is_empty()).then(|| title.to_string())
 }
 
 /// The first line of `text`, trimmed, cut to a title's length on a character
@@ -461,10 +331,6 @@ pub fn transcripts(config_dir: &Path) -> Vec<(String, String, PathBuf)> {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Write;
-
-    use serde_json::{json, Value};
-
     use super::*;
 
     fn write(path: &Path, text: &str) {
@@ -472,154 +338,184 @@ mod tests {
         fs::write(path, text).unwrap();
     }
 
-    fn append(path: &Path, text: &str) {
-        let mut file = fs::OpenOptions::new().append(true).open(path).unwrap();
-        file.write_all(text.as_bytes()).unwrap();
-    }
-
-    fn lines(records: &[Value]) -> String {
-        records.iter().map(|record| format!("{record}\n")).collect()
-    }
-
-    fn user(timestamp: &str, cwd: &str, content: Value) -> Value {
-        json!({
-            "type": "user",
-            "timestamp": timestamp,
-            "cwd": cwd,
-            "isSidechain": false,
-            "message": { "role": "user", "content": content },
-        })
-    }
-
-    fn assistant(timestamp: &str, cwd: &str) -> Value {
-        json!({
-            "type": "assistant",
-            "timestamp": timestamp,
-            "cwd": cwd,
-            "isSidechain": false,
-            "message": { "role": "assistant", "content": [{ "type": "text", "text": "Done." }] },
-        })
-    }
-
     #[test]
-    fn a_transcript_is_read_from_its_latest_records() {
+    fn reads_the_latest_cwd_titles_and_plan_slugs() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("s.jsonl");
-        let mut records = vec![
-            user(
-                "2026-09-01T10:00:00Z",
-                "/work/app",
-                json!("  Fix the login bug  "),
+        write(
+            &path,
+            concat!(
+                r#"{"type":"user","cwd":"/scratch","timestamp":"2026-01-01T00:00:00Z","message":{"content":"{\"cwd\":\"/nested\"}"}}"#,
+                "\n",
+                r#"{"type":"assistant","cwd":"/scratch","slug":"bold-plan"}"#,
+                "\n",
+                "{not json\n",
+                r#"{"type":"ai-title","aiTitle":"Generated"}"#,
+                "\n",
+                r#"{"type":"relocated"}"#,
+                "\n",
+                r#"{"type":"user","cwd":"/work","timestamp":"2026-01-02T00:00:00Z"}"#,
+                "\n",
+                r#"{"type":"custom-title","customTitle":"Old name"}"#,
+                "\n",
+                r#"{"type":"custom-title","customTitle":"New name"}"#,
+                "\n",
+                r#"{"type":"last-prompt","lastPrompt":"do it"}"#,
+                "\n",
+                r#"{"type":"assistant","slug":"../escape"}"#,
+                "\n",
             ),
-            json!({ "type": "ai-title", "aiTitle": "Login fix" }),
-            json!({ "type": "custom-title", "customTitle": "First name" }),
-            assistant("2026-09-01T10:05:00Z", "/work/app"),
-            json!({ "type": "custom-title", "customTitle": "Second name" }),
-            json!({ "type": "last-prompt", "lastPrompt": "Fix the login bug" }),
-            user(
-                "2026-09-01T10:07:30Z",
-                "/work/app/web",
-                json!([{ "type": "text", "text": "And logout" }]),
-            ),
-            json!({ "type": "last-prompt", "lastPrompt": "And logout" }),
-            json!({ "type": "assistant", "slug": "bold-plan", "timestamp": "2026-09-01T10:08:00Z" }),
-            json!({ "type": "assistant", "slug": "../escape" }),
-        ];
-        records.insert(2, json!("not a record"));
-        write(&path, &format!("{}{{not json\n", lines(&records)));
-
+        );
         let info = read_transcript(&path).unwrap();
-        assert_eq!(info.cwd.as_deref(), Some("/work/app/web"));
-        assert_eq!(info.title().as_deref(), Some("Second name"));
-        assert_eq!(info.first_prompt.as_deref(), Some("Fix the login bug"));
-        assert_eq!(info.last_prompt.as_deref(), Some("And logout"));
+        assert_eq!(info.cwd.as_deref(), Some("/work"));
+        assert_eq!(info.title().as_deref(), Some("New name"));
+        assert_eq!(info.last_prompt.as_deref(), Some("do it"));
         assert_eq!(
             info.first_timestamp.as_deref(),
-            Some("2026-09-01T10:00:00Z")
+            Some("2026-01-01T00:00:00Z")
         );
-        assert_eq!(info.last_timestamp.as_deref(), Some("2026-09-01T10:08:00Z"));
+        assert_eq!(info.last_timestamp.as_deref(), Some("2026-01-02T00:00:00Z"));
         assert!(info.has_reply);
-        assert_eq!(info.slugs.iter().collect::<Vec<_>>(), vec!["bold-plan"]);
+        assert_eq!(
+            info.slugs.into_iter().collect::<Vec<_>>(),
+            vec!["bold-plan".to_string()]
+        );
     }
 
     #[test]
-    fn the_first_prompt_is_the_first_text_the_user_typed_cut_to_200_chars() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("s.jsonl");
-        let mut meta = user(
-            "2026-09-01T10:00:00Z",
-            "/work",
-            json!("<local-command-caveat>"),
-        );
-        meta["isMeta"] = json!(true);
-        write(
-            &path,
-            &lines(&[
-                meta,
-                user(
-                    "2026-09-01T10:00:01Z",
-                    "/work",
-                    json!([{ "type": "tool_result", "tool_use_id": "t", "content": "output" }]),
-                ),
-                user("2026-09-01T10:00:02Z", "/work", json!("é".repeat(250))),
-            ]),
-        );
-        let first = read_transcript(&path).unwrap().first_prompt.unwrap();
-        assert_eq!(first.chars().count(), 200);
-    }
-
-    #[test]
-    fn a_relocated_session_works_in_its_new_folder() {
+    fn a_session_moved_to_another_folder_works_there() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("s.jsonl");
         write(
             &path,
-            &lines(&[
-                user("2026-09-01T10:00:00Z", "/old", json!("hi")),
-                json!({ "type": "relocated", "relocatedCwd": "/new" }),
-            ]),
+            concat!(
+                r#"{"type":"user","cwd":"/old/place","message":{"content":"start"}}"#,
+                "\n",
+                r#"{"type":"assistant","cwd":"/old/place"}"#,
+                "\n",
+                r#"{"type":"system","subtype":"relocated","cwd":"/new/place"}"#,
+                "\n",
+            ),
         );
-        assert_eq!(read_transcript(&path).unwrap().cwd.as_deref(), Some("/new"));
+        assert_eq!(
+            read_transcript(&path).unwrap().cwd.as_deref(),
+            Some("/new/place")
+        );
     }
 
     #[test]
-    fn a_transcript_of_subagent_records_only_is_no_session() {
+    fn the_first_prompt_is_the_first_thing_the_user_typed() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("s.jsonl");
-        let mut side = user("2026-09-01T10:00:00Z", "/work", json!("task"));
-        side["isSidechain"] = json!(true);
-        write(&path, &lines(&[side.clone()]));
-        assert!(read_transcript(&path).unwrap().subagent_only());
-        append(
+        let long = "x".repeat(300);
+        write(
             &path,
-            &lines(&[user("2026-09-01T10:01:00Z", "/work", json!("mine"))]),
+            &[
+                r#"{"type":"user","isMeta":true,"message":{"content":"<local-command-caveat>…</local-command-caveat>"}}"#.to_string(),
+                r#"{"type":"user","message":{"content":"<command-name>/model</command-name>"}}"#.to_string(),
+                r#"{"type":"user","message":{"content":[{"type":"tool_result","content":"ok"}]}}"#.to_string(),
+                format!(r#"{{"type":"user","message":{{"content":[{{"type":"text","text":"  Fix the build {long}"}}]}}}}"#),
+                r#"{"type":"user","message":{"content":"Something later"}}"#.to_string(),
+            ]
+            .join("\n"),
         );
-        assert!(!read_transcript(&path).unwrap().subagent_only());
+        let info = read_transcript(&path).unwrap();
+        let first = info.first_prompt.unwrap();
+        assert!(first.starts_with("Fix the build x"));
+        assert_eq!(first.chars().count(), FIRST_PROMPT_CHARS);
     }
 
     #[test]
-    fn reading_on_reads_only_what_was_appended_and_ends_as_a_whole_read_would() {
+    fn a_subagents_own_transcript_is_told_apart() {
+        let dir = tempfile::tempdir().unwrap();
+        let side = dir.path().join("side.jsonl");
+        write(
+            &side,
+            concat!(
+                r#"{"type":"user","isSidechain":true,"message":{"content":"task"}}"#,
+                "\n",
+                r#"{"type":"assistant","isSidechain":true}"#,
+                "\n",
+            ),
+        );
+        let info = read_transcript(&side).unwrap();
+        assert!(info.is_subagent_only());
+        assert_eq!(info.first_prompt, None, "a subagent's task is no prompt");
+
+        let main = dir.path().join("main.jsonl");
+        write(
+            &main,
+            concat!(
+                r#"{"type":"user","isSidechain":false,"message":{"content":"hello"}}"#,
+                "\n",
+                r#"{"type":"assistant","isSidechain":true}"#,
+                "\n",
+            ),
+        );
+        assert!(!read_transcript(&main).unwrap().is_subagent_only());
+    }
+
+    #[test]
+    fn a_title_file_beside_the_transcript_names_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("abc.jsonl");
+        write(&path, "");
+        assert_eq!(title_file(&path), None);
+        write(
+            &dir.path().join("abc/custom-title.json"),
+            r#"{"customTitle":" Flaky build "}"#,
+        );
+        assert_eq!(title_file(&path).as_deref(), Some("Flaky build"));
+        write(
+            &dir.path().join("abc/custom-title.json"),
+            r#"{"customTitle":""}"#,
+        );
+        assert_eq!(title_file(&path), None);
+    }
+
+    #[test]
+    fn reading_on_from_an_offset_reads_as_the_whole_file_would() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("s.jsonl");
-        let first = lines(&[user("2026-09-01T10:00:00Z", "/a", json!("start"))]);
+        let first = concat!(
+            r#"{"type":"user","cwd":"/a","timestamp":"2026-01-01T00:00:00Z","message":{"content":"go"}}"#,
+            "\n",
+            r#"{"type":"ai-title","aiTitle":"First"}"#,
+            "\n",
+        );
         // The last line is still being written.
-        write(&path, &format!("{first}{{\"type\":\"ai-title\",\"aiTit"));
-        let read = read_on(&path, None).unwrap();
-        assert_eq!(read.offset, first.len() as u64);
-        assert_eq!(read.info().ai_title, None);
+        write(
+            &path,
+            &format!("{first}{{\"type\":\"assistant\",\"slug\":\"pl"),
+        );
+        let (info, offset) = read_transcript_from(&path, TranscriptInfo::default(), 0).unwrap();
+        assert_eq!(offset, first.len() as u64);
+        assert!(!info.has_reply);
+        assert_eq!(info.ai_title.as_deref(), Some("First"));
 
-        let rest = lines(&[
-            json!({ "type": "ai-title", "aiTitle": "Named" }),
-            assistant("2026-09-01T10:01:00Z", "/b"),
-        ]);
+        let rest = concat!(
+            r#"{"type":"assistant","slug":"plan"}"#,
+            "\n",
+            r#"{"type":"user","cwd":"/b","timestamp":"2026-01-02T00:00:00Z"}"#,
+            "\n",
+            r#"{"type":"custom-title","customTitle":"Mine"}"#,
+            "\n",
+        );
         write(&path, &format!("{first}{rest}"));
-        let read = read_on(&path, Some(read)).unwrap();
+        let (info, offset) = read_transcript_from(&path, info, offset).unwrap();
+        assert_eq!(offset, (first.len() + rest.len()) as u64);
         let whole = read_transcript(&path).unwrap();
-        for info in [read.info(), &whole] {
-            assert_eq!(info.ai_title.as_deref(), Some("Named"));
-            assert_eq!(info.cwd.as_deref(), Some("/b"));
-            assert_eq!(info.first_prompt.as_deref(), Some("start"));
+        for info in [&info, &whole] {
             assert!(info.has_reply);
+            assert_eq!(info.cwd.as_deref(), Some("/b"));
+            assert_eq!(info.title().as_deref(), Some("Mine"));
+            assert_eq!(info.first_prompt.as_deref(), Some("go"));
+            assert_eq!(
+                info.first_timestamp.as_deref(),
+                Some("2026-01-01T00:00:00Z")
+            );
+            assert_eq!(info.last_timestamp.as_deref(), Some("2026-01-02T00:00:00Z"));
+            assert_eq!(info.slugs.iter().collect::<Vec<_>>(), vec!["plan"]);
         }
     }
 
@@ -628,66 +524,34 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("s.jsonl");
         write(&path, r#"{"type":"last-prompt","lastPrompt":"go"}"#);
-        let read = read_on(&path, None).unwrap();
-        assert_eq!(read.info().last_prompt.as_deref(), Some("go"));
-        assert_eq!(read.offset, 0);
+        let (info, offset) = read_transcript_from(&path, TranscriptInfo::default(), 0).unwrap();
+        assert_eq!(info.last_prompt.as_deref(), Some("go"));
+        assert_eq!(offset, 0);
+        assert_eq!(
+            read_transcript(&path).unwrap().last_prompt.as_deref(),
+            Some("go")
+        );
     }
 
     #[test]
-    fn a_rewritten_transcript_is_read_afresh() {
+    fn reading_on_refuses_a_file_that_changed_before_the_offset() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("s.jsonl");
-        write(
-            &path,
-            &lines(&[user("2026-09-01T10:00:00Z", "/a", json!("one"))]),
-        );
-        let read = read_on(&path, None).unwrap();
-        // Rewritten in place, longer, with a different start: not appended to.
-        write(
-            &path,
-            &lines(&[
-                user("2026-09-01T11:00:00Z", "/b", json!("two")),
-                user("2026-09-01T11:00:01Z", "/b", json!("three")),
-            ]),
-        );
-        let read = read_on(&path, Some(read)).unwrap();
-        assert_eq!(read.info().first_prompt.as_deref(), Some("two"));
-        assert_eq!(read.info().cwd.as_deref(), Some("/b"));
+        write(&path, "{\"type\":\"user\"}\n");
+        let (info, offset) = read_transcript_from(&path, TranscriptInfo::default(), 0).unwrap();
+        write(&path, "{\"type\":\"assistant\",\"cwd\":\"/x\"}\n");
+        let error = read_transcript_from(&path, info, offset).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
     }
 
     #[test]
-    fn an_unchanged_transcript_is_not_read_again() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("s.jsonl");
-        write(
-            &path,
-            &lines(&[user("2026-09-01T10:00:00Z", "/a", json!("one"))]),
-        );
-        let read = read_on(&path, None).unwrap();
-        let again = read_on(&path, Some(read.clone())).unwrap();
-        assert_eq!(again.offset, read.offset);
-        assert_eq!(again.info().first_prompt, read.info().first_prompt);
-    }
-
-    #[test]
-    fn a_rename_kept_beside_the_transcript_is_its_title_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("-work").join("abc.jsonl");
-        write(&path, "");
-        assert_eq!(title_file(&path), None);
-        write(
-            &dir.path().join("-work/abc/custom-title.json"),
-            r#"{"customTitle":"Billing"}"#,
-        );
-        assert_eq!(title_file(&path).as_deref(), Some("Billing"));
-    }
-
-    #[test]
-    fn name_prefers_the_users_name_then_claudes_then_the_last_prompt() {
+    fn name_prefers_the_users_name_then_claudes_then_the_prompts() {
         let mut info = TranscriptInfo {
-            last_prompt: Some("\n  Reply with just: ok  \nand more".into()),
+            first_prompt: Some("The very first ask".into()),
             ..TranscriptInfo::default()
         };
+        assert_eq!(info.name(), Some(("The very first ask".into(), false)));
+        info.last_prompt = Some("\n  Reply with just: ok  \nand more".into());
         assert_eq!(info.name(), Some(("Reply with just: ok".into(), false)));
         info.ai_title = Some("Generated".into());
         assert_eq!(info.name(), Some(("Generated".into(), false)));

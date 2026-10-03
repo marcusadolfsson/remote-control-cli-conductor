@@ -1,5 +1,5 @@
 //! The server end to end: a real listener on 127.0.0.1, real TLS, and a
-//! client that pins the certificate the way ai-profiles does.
+//! client that pins the certificate the way the plugin and the Mac app do.
 
 use std::collections::HashSet;
 use std::fs;

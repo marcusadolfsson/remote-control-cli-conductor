@@ -78,7 +78,4 @@ Checks: `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D
 A release is a tag `v<version>`, the workspace's version and the plugin's: CI builds the server for
 both architectures and publishes them with checksums.
 
-## Credits
-
-The server grew out of [ai-profiles](https://github.com/bartekczyz/ai-profiles) by Bartek Czyż,
-whose Claude Code transcript reading it still ports. MIT licensed, as is this.
+MIT licensed.

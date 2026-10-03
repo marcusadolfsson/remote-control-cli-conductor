@@ -12,7 +12,7 @@
 //! `<destination>/session-transfer-backups/<id>/<stamp>/`, at its path in
 //! the account, never deleted. Every change is logged in a [`Journal`], so a
 //! move that fails part way is taken back: what it put in place is set aside
-//! and what it replaced is put back, as ai-profiles' own moves do. Project
+//! and what it replaced is put back. Project
 //! memory is merged, not copied: see [`crate::memory`].
 //!
 //! Archiving moves only the transcript, to

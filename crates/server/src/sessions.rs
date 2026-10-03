@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 use std::fs;
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::thread;
@@ -12,33 +13,72 @@ use std::time::{Duration, Instant, SystemTime};
 use conductor_core::api::{RemoteSession, TmuxWindow};
 use conductor_core::registry::{read_registry, RegistryEntry};
 use conductor_core::transcript::{
-    read_on, short_line, title_file, transcripts, TranscriptInfo, TranscriptRead,
+    read_transcript, read_transcript_from, short_line, title_file, transcripts, TranscriptInfo,
 };
 
 use crate::accounts::AccountDir;
 use crate::procs::ProcessTable;
 
-/// What was read of each transcript, by path: listing reads every transcript,
-/// and most don't change between two lists. One that did usually grew, as a
+/// Parsed transcripts, keyed by path: listing reads every transcript, and
+/// most don't change between two lists. One that did usually grew, as a
 /// running session's does (to hundreds of megabytes), so only what was
-/// appended is read (see [`read_on`]).
+/// appended is read. One that was replaced (moves write a new file and rename
+/// it over), shrank or changed before the end of what was read is read again
+/// in full.
 #[derive(Default)]
-pub struct TranscriptCache(Mutex<HashMap<PathBuf, TranscriptRead>>);
+pub struct TranscriptCache(Mutex<HashMap<PathBuf, Cached>>);
+
+#[derive(Clone)]
+struct Cached {
+    inode: u64,
+    modified: SystemTime,
+    size: u64,
+    /// Where the next read goes on from: the end of the last complete line.
+    offset: u64,
+    info: TranscriptInfo,
+}
 
 impl TranscriptCache {
     /// What the transcript at `path` says, reading only what changed.
     pub fn info(&self, path: &Path) -> Option<TranscriptInfo> {
         self.read(path)
-            .map(|read| with_title_file(path, read.info()))
+            .map(|read| with_title_file(path, &read.info))
     }
 
-    fn read(&self, path: &Path) -> Option<TranscriptRead> {
-        let previous = self.0.lock().ok()?.remove(path);
-        let read = read_on(path, previous).ok()?;
+    fn read(&self, path: &Path) -> Option<Cached> {
+        let metadata = fs::metadata(path).ok()?;
+        let modified = metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH);
+        let (inode, size) = (metadata.ino(), metadata.len());
+        let gzipped = path.extension().is_some_and(|ext| ext == "gz");
+        let known = self.0.lock().ok()?.remove(path);
+        let (info, offset) = match known {
+            Some(cached)
+                if cached.inode == inode && cached.modified == modified && cached.size == size =>
+            {
+                (cached.info, cached.offset)
+            }
+            // Read on from where the last read stopped, unless the file
+            // turns out to have changed before there.
+            Some(cached) if !gzipped && cached.inode == inode && cached.offset <= size => {
+                match read_transcript_from(path, cached.info, cached.offset) {
+                    Ok(read) => read,
+                    Err(_) => read_transcript_from(path, TranscriptInfo::default(), 0).ok()?,
+                }
+            }
+            _ if gzipped => (read_transcript(path).ok()?, size),
+            _ => read_transcript_from(path, TranscriptInfo::default(), 0).ok()?,
+        };
+        let cached = Cached {
+            inode,
+            modified,
+            size,
+            offset,
+            info,
+        };
         if let Ok(mut cache) = self.0.lock() {
-            cache.insert(path.to_path_buf(), read.clone());
+            cache.insert(path.to_path_buf(), cached.clone());
         }
-        Some(read)
+        Some(cached)
     }
 }
 
@@ -128,16 +168,16 @@ pub fn list(
         let Some(read) = cache.read(&path) else {
             continue;
         };
-        let info = with_title_file(&path, read.info());
+        let info = with_title_file(&path, &read.info);
         let live = running.get(&id);
         // A subagent's transcript isn't a session, and one nothing happened in
         // is left out as Claude's own /resume leaves it out.
-        if (info.is_empty() || info.subagent_only()) && live.is_none() {
+        if (info.is_empty() || info.is_subagent_only()) && live.is_none() {
             continue;
         }
         listed.insert(id.clone());
-        let used = last_used(&info, read.modified());
-        sessions.push((used, summary(id, &info, live, used, read.size())));
+        let used = last_used(&info, read.modified);
+        sessions.push((used, summary(id, &info, live, used, read.size)));
     }
     // Claude writes a session's transcript with its first message; one
     // that's running but hasn't had one yet is listed from the registry.

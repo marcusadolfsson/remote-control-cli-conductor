@@ -84,7 +84,7 @@ const GLYPHS: Record<IconName, string> = {
 
 /** An icon: SVG where the surface draws it, else its glyph. */
 export function Icon(ui: Ui, name: IconName, tone: IconTone, size = 14) {
-  if ('Svg' in ui) {
+  if (ui.surface === 'desktop') {
     const { Svg } = ui
     const source = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="${size}" height="${size}">${PATHS[name](HEX[tone])}</svg>`
     return <Svg alt={name} width={size} height={size} source={source} />

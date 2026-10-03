@@ -10,7 +10,11 @@ import type {
 } from '../../types'
 
 /** The elements a view draws with: the surface's table. */
-export type Ui = Elements['terminal'] | Elements['desktop']
+/**
+ * The elements a view draws with (the surface's table), and which surface
+ * draws them, as the engine says: the tables alone don't tell them apart.
+ */
+export type Ui = (Elements['terminal'] & { surface: 'terminal' }) | (Elements['desktop'] & { surface: 'desktop' })
 
 export type Act = {
   refresh: () => void

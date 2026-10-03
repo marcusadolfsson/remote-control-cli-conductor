@@ -208,6 +208,8 @@ describe('the hosts pane', () => {
       expect(await ui.find({ key: `am-${HOST_ID}/Misc` })).toBeDefined()
       expect(await ui.find({ key: `sm-${RUNNING.id}` })).toBeDefined()
       expect(await ui.find({ type: 'Text', text: /Waiting for you/ })).toBeDefined()
+      // SVG icons where the desktop draws them; glyphs in the terminal, which draws no SVG.
+      expect(await ui.find({ type: 'Svg' }), 'icons').toEqual(surface === 'desktop' ? expect.anything() : undefined)
       expect(await ui.find({ type: 'Text', text: /can update to 2\.1\.287/ })).toBeDefined()
 
       await ui.press({ key: `sm-${STOPPED.id}` })
@@ -275,8 +277,12 @@ describe('the hosts pane', () => {
       await pane.press({ key: `sm-${WAITING.id}` })
       await pane.press({ key: `mi-sm-${WAITING.id}-answer` })
       d = await dialog()
-      expect(await d.find({ key: 'term' }), 'typing region').toBeDefined()
-      await d.post(
+      if (surface === 'desktop') {
+        // The desktop draws no Client region yet: the screen, with the key buttons and Type field.
+        expect(await d.find({ type: 'Code' }), 'screen on the desktop').toBeDefined()
+      } else {
+        expect(await d.find({ key: 'term' }), 'typing region').toBeDefined()
+        await d.post(
         {
           keys: [
             { seq: 1, key: { text: 'y' } },
@@ -294,7 +300,8 @@ describe('the hosts pane', () => {
         },
         { in: 'term' },
       )
-      expect(calls.filter((c) => c === 'POST /v1/accounts/Misc/windows/@8/keys').length, 'each key sent once').toBe(2)
+        expect(calls.filter((c) => c === 'POST /v1/accounts/Misc/windows/@8/keys').length, 'each key sent once').toBe(2)
+      }
       expect(await d.find({ key: 'key-Enter' }), 'check 3').toBeDefined()
       await d.unmount()
 

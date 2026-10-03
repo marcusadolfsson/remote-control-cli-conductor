@@ -681,7 +681,10 @@ function WindowDialog(
   host: ConductorHost | undefined,
   act: DialogAct,
 ) {
-  const { Box, Button, Client, Input, Text } = ui
+  const { Box, Button, Client, Code, Input, Text } = ui
+  // The desktop doesn't draw a Client region yet: there the screen is shown, and the keys and the
+  // Type field below send input. The terminal's region takes keys typed straight into it.
+  const isDesktop = ui.surface === 'desktop'
   const screen = d.screen ? trimScreen(d.screen.text).replace(/[^\P{Cc}\n\t]/gu, '') : ''
   const isUp = Boolean(d.screen?.sessionId)
   return [
@@ -716,7 +719,9 @@ function WindowDialog(
       <Text color={d.isGone ? 'inactive' : 'permission'} bold>
         {d.isGone ? 'The tmux window has closed' : 'Live tmux window'}
       </Text>
-      {d.isGone ? null : screen ? (
+      {d.isGone ? null : screen && isDesktop ? (
+        <Code source={screen.slice(-9000)} language="text" />
+      ) : screen ? (
         <Client
           key="term"
           module="./terminal.tsx"

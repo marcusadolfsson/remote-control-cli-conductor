@@ -395,7 +395,7 @@ function AccountBlock(ui: Ui, host: ConductorHost, a: ConductorAccount, model: O
       )}
       {a.error && <Text color="error"> {a.error}</Text>}
       {a.sessions.length === 0 && !a.error && <Text dimColor>{'    '}No sessions yet.</Text>}
-      <Box flexDirection="column" marginTop={a.sessions.length ? 1 : 0} rowGap={'Svg' in ui ? 1 : 0}>
+      <Box flexDirection="column" marginTop={a.sessions.length ? 1 : 0} rowGap={ui.surface === 'desktop' ? 1 : 0}>
         {[...running, ...shown].map((s, i, all) => SessionRow(ui, host, name, s, i === all.length - 1, model, act))}
       </Box>
       {previous.length > PREVIOUS_SHOWN && (
@@ -508,7 +508,7 @@ function SessionRow(
   const isBusy = model.busy?.startsWith(`${host.id}/${account}/${session.id}:`) ?? false
   const when = shortAge(session.updatedAt, model.now)
   // Tree lines only where text is monospaced: the desktop's proportional font can't line them up.
-  const isTerminal = !('Svg' in ui)
+  const isTerminal = ui.surface === 'terminal'
   const branch = isTerminal ? <Text color="promptBorder">{isLast ? '└─' : '├─'}</Text> : null
   const glyph = isBusy ? <Text color="claude">…</Text> : Icon(ui, state.icon, state.tone)
   const items = sessionMenu(host, target, session, act)

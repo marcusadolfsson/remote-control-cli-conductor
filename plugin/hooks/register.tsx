@@ -32,7 +32,7 @@ import type {
   WindowKey,
   WindowScreen,
 } from '../types'
-import type { Act, DialogAct } from './views/act'
+import type { Act, DialogAct, Ui } from './views/act'
 
 import { atom, read, update } from 'claude-code'
 
@@ -1821,7 +1821,7 @@ export const register: Register = (on) => {
       const { Text } = $.ui.resolve(e)
       return <Text>{summarize(await read($, view))}</Text>
     }
-    const ui = $.ui.resolve(e)
+    const ui = { ...$.ui.resolve(e), surface: e.surface } as Ui
     return Overview(
       ui,
       {
@@ -1844,7 +1844,7 @@ export const register: Register = (on) => {
       const { Text } = $.ui.resolve(e)
       return <Text>Open this in the terminal or the Claude desktop app.</Text>
     }
-    const ui = $.ui.resolve(e)
+    const ui = { ...$.ui.resolve(e), surface: e.surface } as Ui
     const d = await read($, dialog)
     if (!d) {
       const { Text } = ui

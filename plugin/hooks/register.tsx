@@ -39,11 +39,6 @@ import { atom, read, update } from 'claude-code'
 import {
   errorCode,
   errorText,
-  FORGET_TOKEN_SCRIPT,
-  KEYCHAIN_SERVICE,
-  PAIR_SCRIPT,
-  PIN_SCRIPT,
-  REQUEST_SCRIPT,
   RemoteError,
   readCurl,
 } from './lib/curl'
@@ -57,7 +52,7 @@ import { decodePairingCode } from './lib/pairing'
 import { findSession, isFound, splitProfile } from './lib/refs'
 import { ARCHIVE_BODY, movedDetails, signOutBody, stopBody } from './lib/texts'
 import { sessionJson, TOOL_SPECS, toolDecisions } from './lib/tools'
-import { Dialog, dialogRows, dialogTitle } from './views/dialogs'
+import { Dialog, dialogRows, dialogTitle, windowRegionProps } from './views/dialogs'
 import { Overview } from './views/overview'
 
 type Engine = EngineInterface
@@ -102,9 +97,8 @@ const answeredOn = new Map<string, string>()
 
 type Pins = Record<string, { fingerprint: string; key: string }>
 
-async function sh($: Engine, script: string, args: Array<string>, seconds = 60) {
-  return $.process.run(['/bin/sh', '-c', script, 'sh', ...args], { timeoutMs: (seconds + 15) * 1000 })
-}
+/** How long a script may run: its own curl limit, and room to read the Keychain. */
+const scriptTimeout = (seconds: number) => ({ timeoutMs: (seconds + 15) * 1000 })
 
 /** The hosts: the plugin's own list, and any the Mac app paired that it hasn't seen. */
 /** Whether demo mode (`/remote-control-cli-servers demo`) is on: made-up hosts, for screenshots. */
@@ -135,15 +129,15 @@ async function pairedHosts($: Engine): Promise<Array<PairedHost>> {
 }
 
 async function hostById($: Engine, hostId: string): Promise<PairedHost> {
-  const host = (await pairedHosts($)).find((h) => h.id === hostId)
+  const host = (await pairedHosts($)).find((known) => known.id === hostId)
   if (!host) throw new RemoteError('not_paired', 'That host is no longer paired.')
   return host
 }
 
 async function saveHost($: Engine, host: PairedHost) {
   const list = ((await $.store.get('hosts')) ?? []) as Array<PairedHost>
-  const at = list.findIndex((h) => h.id === host.id)
-  await $.store.set('hosts', at < 0 ? [...list, host] : list.map((h) => (h.id === host.id ? host : h)))
+  const at = list.findIndex((known) => known.id === host.id)
+  await $.store.set('hosts', at < 0 ? [...list, host] : list.map((known) => (known.id === host.id ? host : known)))
   const removed = ((await $.store.get('removedHosts')) ?? []) as Array<string>
   if (removed.includes(host.id))
     await $.store.set(
@@ -161,7 +155,10 @@ async function pinFor(
   const pins = ((await $.store.get('pins')) ?? {}) as Pins
   const known = pins[host.id]
   if (known && known.fingerprint === host.fingerprint) return known.key
-  const run = await sh($, PIN_SCRIPT, [address, host.fingerprint], 15)
+  const run = await $.process.run(
+    ['/bin/sh', `${$.plugin.root}/scripts/pin.sh`, address, host.fingerprint],
+    scriptTimeout(15),
+  )
   if (run.exitCode === 7) return null
   if (run.exitCode === 90) throw new RemoteError('cert_mismatch', "The host's certificate doesn't match the pairing.")
   if (run.exitCode !== 0) throw new RemoteError('client', run.stderr.trim() || 'The certificate could not be read.')
@@ -184,11 +181,9 @@ async function call(
     const key = await pinFor($, host, address)
     if (!key) continue
     const json = body === undefined ? '' : JSON.stringify(body)
-    const run = await sh(
-      $,
-      REQUEST_SCRIPT,
-      [host.id, key, KEYCHAIN_SERVICE, `https://${address}${path}`, method, json, String(seconds)],
-      seconds,
+    const run = await $.process.run(
+      ['/bin/sh', `${$.plugin.root}/scripts/request.sh`, host.id, key, `https://${address}${path}`, method, json, String(seconds)],
+      scriptTimeout(seconds),
     )
     const answer = readCurl(run, method === 'GET')
     if (answer === null) continue
@@ -257,7 +252,7 @@ function refresh($: Engine): Promise<void> {
       const shown = await read($, archived)
       for (const key of Object.keys(shown)) void loadArchived($, key)
       const waiting = hosts
-        .flatMap((h) => h.accounts.flatMap((a) => a.sessions))
+        .flatMap((known) => known.accounts.flatMap((a) => a.sessions))
         .filter((s) => s.running && s.waiting).length
       $.ui.status(waiting ? `◐ ${count(waiting, 'host session')} waiting for you` : undefined)
     } catch (err) {
@@ -285,8 +280,8 @@ async function tick($: Engine) {
   if (!(await $.ui.panes()).some((pane) => pane.id === PANE)) return
   const now = await $.clock.now()
   const current = await read($, view)
-  const isConnecting = current.hosts.some((h) =>
-    h.accounts.some((a) => a.sessions.some((s) => s.remoteControlConnecting)),
+  const isConnecting = current.hosts.some((known) =>
+    known.accounts.some((a) => a.sessions.some((s) => s.remoteControlConnecting)),
   )
   if (isConnecting || now - lastRefreshAt >= REFRESH_MS) void refresh($)
 }
@@ -324,7 +319,7 @@ async function perform($: Engine, token: string, work: () => Promise<ConductorNo
 const targetKey = (t: ConductorTarget) => `${t.hostId}/${t.account}/${t.sessionId}`
 
 async function hostLabel($: Engine, hostId: string) {
-  return (await read($, view)).hosts.find((h) => h.id === hostId)?.label ?? 'the host'
+  return (await read($, view)).hosts.find((known) => known.id === hostId)?.label ?? 'the host'
 }
 
 /** After a resume, restart or start: the window when Claude is asking something, else a note. */
@@ -405,10 +400,19 @@ async function openInClaudeApp($: Engine, t: ConductorTarget, bridgeSessionId: s
     )
     if (hasMacApp) {
       const host = await hostById($, t.hostId)
-      const run = await $.process.run(['/usr/bin/env', '-u', 'CLAUDE_CONFIG_DIR', MAC_APP_BINARY, 'mcp'], {
-        stdin: mcpCall('open_in_claude', { profile: `${host.hostname}/${t.account}`, session: t.sessionId }),
-        timeoutMs: 90_000,
-      })
+      const run = await $.process.run(
+        [
+          '/usr/bin/env',
+          '-u',
+          'CLAUDE_CONFIG_DIR',
+          '/Applications/Remote Control Conductor.app/Contents/MacOS/remote-control-conductor',
+          'mcp',
+        ],
+        {
+          stdin: mcpCall('open_in_claude', { profile: `${host.hostname}/${t.account}`, session: t.sessionId }),
+          timeoutMs: 90_000,
+        },
+      )
       const result = mcpResult(run.stdout)
       if (result && !result.isError) {
         const { app, note } = openedWhere(result.text)
@@ -447,7 +451,7 @@ async function restore($: Engine, hostId: string, account: string, a: ArchivedSe
 
 async function confirmDialog($: Engine, action: ConductorConfirmAction): Promise<ConductorDialog> {
   const current = await read($, view)
-  const host = current.hosts.find((h) => h.id === ('target' in action ? action.target.hostId : action.hostId))
+  const host = current.hosts.find((known) => known.id === ('target' in action ? action.target.hostId : action.hostId))
   const label = host?.label ?? 'the host'
   const base = { kind: 'confirm' as const, action, error: null, isBusy: false }
   switch (action.kind) {
@@ -545,7 +549,7 @@ async function runConfirmed($: Engine, action: ConductorConfirmAction): Promise<
     }
     case 'restartAll': {
       const current = await read($, view)
-      const host = current.hosts.find((h) => h.id === action.hostId)
+      const host = current.hosts.find((known) => known.id === action.hostId)
       const sessions =
         host?.accounts.find((a) => a.account.name === action.account)?.sessions.filter((s) => s.running) ?? []
       const failed: Array<string> = []
@@ -612,11 +616,11 @@ async function runConfirmed($: Engine, action: ConductorConfirmAction): Promise<
       } catch {
         // Unreachable: forget it here anyway.
       }
-      await sh($, FORGET_TOKEN_SCRIPT, [host.id, KEYCHAIN_SERVICE], 10)
+      await $.process.run(['/bin/sh', `${$.plugin.root}/scripts/forget-token.sh`, host.id], scriptTimeout(10))
       const list = ((await $.store.get('hosts')) ?? []) as Array<PairedHost>
       await $.store.set(
         'hosts',
-        list.filter((h) => h.id !== host.id),
+        list.filter((known) => known.id !== host.id),
       )
       const removed = ((await $.store.get('removedHosts')) ?? []) as Array<string>
       await $.store.set('removedHosts', [...new Set([...removed, host.id])])
@@ -771,7 +775,7 @@ function sshAttach(hostname: string, attach: string): string | null {
 async function attachCommand($: Engine): Promise<string | null> {
   const d = await read($, dialog)
   if (d?.kind !== 'window') return null
-  const host = (await read($, view)).hosts.find((h) => h.id === d.target.hostId)
+  const host = (await read($, view)).hosts.find((known) => known.id === d.target.hostId)
   const attach =
     d.launch?.attachCommand ?? `tmux attach -t ${host?.info?.tmux?.session ?? 'ai'} ; select-window -t ${d.windowId}`
   return host ? sshAttach(host.hostname, attach) : null
@@ -825,13 +829,17 @@ async function pair($: Engine, code: string, wantedLabel: string): Promise<strin
   if (await isDemo($)) throw new Error('Demo mode is on: /remote-control-cli-servers demo turns it off, then pair.')
   const decoded = decodePairingCode(code)
   if ('error' in decoded) throw new Error(decoded.error || "That isn't a pairing code.")
-  const existing = (await pairedHosts($)).find((h) => h.fingerprint === decoded.fingerprint)
+  const existing = (await pairedHosts($)).find((known) => known.fingerprint === decoded.fingerprint)
   const id = existing?.id ?? progressId()
   const body = JSON.stringify({ secret: decoded.secret, clientName: await computerName($) })
   for (const address of decoded.hosts) {
     const key = await pinFor($, { id, fingerprint: decoded.fingerprint }, address)
     if (!key) continue
-    const answer = readCurl(await sh($, PAIR_SCRIPT, [address, key, body, KEYCHAIN_SERVICE, id], 25), false)
+    const run = await $.process.run(
+      ['/bin/sh', `${$.plugin.root}/scripts/pair.sh`, address, key, body, id],
+      scriptTimeout(25),
+    )
+    const answer = readCurl(run, false)
     if (answer === null) continue
     const paired = answer as PairResponse
     const label = wantedLabel.trim() || existing?.label || paired.info.hostname
@@ -1157,7 +1165,7 @@ async function submitDialog($: Engine) {
         const host = await hostById($, d.hostId)
         const label = d.label.trim()
         if (label && label !== host.label) await saveHost($, { ...host, label })
-        const info = (await read($, view)).hosts.find((h) => h.id === d.hostId)?.info
+        const info = (await read($, view)).hosts.find((known) => known.id === d.hostId)?.info
         const wanted = d.isSuffixOn ? d.suffix.trim() || label : null
         if (info?.settings && (info.settings.remoteControlSuffix ?? null) !== wanted) {
           const body: HostSettings = { remoteControlSuffix: wanted }
@@ -1190,7 +1198,7 @@ async function submitDialog($: Engine) {
     case 'renameAccount': {
       await patchDialog($, 'renameAccount', { isBusy: true, error: null })
       try {
-        const host = (await read($, view)).hosts.find((h) => h.id === d.hostId)
+        const host = (await read($, view)).hosts.find((known) => known.id === d.hostId)
         const running =
           host?.accounts.find((a) => a.account.name === d.account)?.sessions.filter((s) => s.running).length ?? 0
         const account = (await callHost(
@@ -1272,7 +1280,7 @@ async function submitDialog($: Engine) {
 }
 
 async function openSignInDialog($: Engine, hostId: string, account: string, isSwitch: boolean) {
-  const host = (await read($, view)).hosts.find((h) => h.id === hostId)
+  const host = (await read($, view)).hosts.find((known) => known.id === hostId)
   const email = host?.accounts.find((a) => a.account.name === account)?.account.account?.email ?? null
   await openDialog($, {
     kind: 'signIn',
@@ -1305,7 +1313,7 @@ async function openNewSession($: Engine, hostId: string, account: string) {
 }
 
 async function openMove($: Engine, target: ConductorTarget) {
-  const host = (await read($, view)).hosts.find((h) => h.id === target.hostId)
+  const host = (await read($, view)).hosts.find((known) => known.id === target.hostId)
   const to = host?.accounts.map((a) => a.account.name).find((n) => n !== target.account) ?? ''
   await openDialog($, {
     kind: 'move',
@@ -1745,7 +1753,7 @@ function dialogActions($: Engine): DialogAct {
       void (async () => {
         const d = await read($, dialog)
         if (d?.kind !== 'signIn') return
-        const host = (await read($, view)).hosts.find((h) => h.id === d.hostId)
+        const host = (await read($, view)).hosts.find((known) => known.id === d.hostId)
         const running =
           host?.accounts.find((a) => a.account.name === d.account)?.sessions.filter((s) => s.running).length ?? 0
         await openDialog($, await confirmDialog($, { kind: 'signOut', hostId: d.hostId, account: d.account, running }))
@@ -1807,8 +1815,8 @@ export const register: Register = (on) => {
     return { text: 'CLI Servers opened.' }
   })
 
-  on('tool.call', async ($, e, next) => {
-    if (!e.tool.startsWith(TOOL_PREFIX)) return next(e)
+  // Only this plugin's own tools: it answers them itself, and sees no other tool's calls.
+  on('tool.call', { tool: /^mcp__remote-control-cli-servers__/ }, async ($, e) => {
     try {
       const result = await runTool($, e.tool.slice(TOOL_PREFIX.length), e as unknown as ToolInput)
       return { result: JSON.stringify(result, (_, v) => (v === null ? undefined : v), 2) }
@@ -1875,6 +1883,10 @@ export const register: Register = (on) => {
       const { Text } = ui
       return <Text dimColor>Nothing to show.</Text>
     }
-    return Dialog(ui, d, await read($, view), dialogActions($))
+    // The tmux window's live region, in the terminal: drawn here, where its module path is read.
+    const { Client } = $.ui.resolve(e)
+    const regionProps = windowRegionProps(d, e.surface)
+    const region = regionProps ? <Client key="term" module="./views/terminal.tsx" props={regionProps} /> : null
+    return Dialog(ui, d, await read($, view), dialogActions($), region)
   })
 }

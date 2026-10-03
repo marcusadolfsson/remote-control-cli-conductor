@@ -31,30 +31,79 @@ gets the same as tools.
 
 ## What it runs, reads and sends
 
-The plugin is a mod: TypeScript that Claude Code runs. Everything outside it goes through these
-programs, all part of macOS, run with your user's permissions:
+Everything here goes to your own Linux hosts and nowhere else: the plugin sends nothing to
+Anthropic, to the plugin's author or to any other server. Below is every way it reaches outside
+Claude Code, all from `hooks/register.tsx`.
 
-| Program | What for |
-|---|---|
-| `curl` | Every request to a paired host, over HTTPS pinned to that host's public key. The plugin contacts no other server. |
-| `security` | Reads and writes the token each host issued at pairing, in your login Keychain (service `app.ai-profiles.remote-host`, one item per host). A shell passes it to `curl` on stdin; it never enters the plugin's code, a command line, or a log. |
-| `openssl`, `shasum` | When a host is first reached: check its certificate against the fingerprint the pairing code carried, and take its public key's hash for pinning. |
-| `jq` | When pairing: take the new token out of the host's answer, so it goes straight to the Keychain. |
-| `scutil` | When pairing: your Mac's name, which the host shows in its list of paired clients. |
-| `open` | Opens a session's claude.ai link, a sign-in page a host offers (only on claude.com, claude.ai, platform.claude.com or console.anthropic.com), or the Claude desktop app. |
-| `osascript` | Only when you choose Open in Terminal: opens Terminal with `ssh` to that host's tmux window. |
-| `/Applications/Remote Control Conductor.app` | Only if that Mac app is installed and you choose Open in Claude app: asks it, in one local call, which Claude desktop app is signed in as the session's account. |
+### Why it runs programs instead of using Claude Code's HTTP call
 
-What it reads and keeps on your Mac:
+The server on each host uses a self-signed certificate, which the plugin trusts only after checking
+it against the fingerprint in the pairing code. Claude Code's own HTTP call (`$.http.fetch`) can
+only trust certificates from the public certificate authorities, and it has no way to pin a key. So
+the plugin talks to your hosts through macOS's own `curl`, pinned to each host's public key.
 
-- the hosts you paired (names, addresses, certificate fingerprints, no tokens) and each host's
-  public-key hash, in the plugin's own store under `~/.claude`;
-- the Mac app's host list, `~/Library/Application Support/ai-profiles/remote-hosts.json`, if it's
-  there, so hosts paired in the Mac app appear too.
+Each host's access token lives in the macOS login Keychain. You never see or type it: the host
+issues it when you pair, and a script writes it straight into the Keychain. Nothing asks you for it,
+so the plugin has no `user_config` option for it. The scripts read the token from the Keychain and
+hand it to `curl` on stdin. It never enters the plugin's own code, a command line, its store or a
+log.
 
-What it sends: only to your own hosts, the requests the pane and tools make (list, start, stop, move
-sessions and so on), with that host's token. Nothing goes to Anthropic or anyone else, apart from
-the pages it opens in your browser.
+### The scripts
+
+`/bin/sh` runs only these four scripts, which ship in the plugin's `scripts/` folder. Each is
+named at its call by a fixed path under the plugin's folder (`$.plugin.root`), and each says at its
+top what it does:
+
+| Script | Arguments | What it does |
+|---|---|---|
+| `scripts/pin.sh` | address, fingerprint | Fetches the host's certificate (a GET of `/v1/ping`, with no token), checks its SHA-256 against the pairing code's fingerprint, and prints its public key's hash to pin to. Uses `curl`, `awk`, `openssl`, `shasum`, `base64`. |
+| `scripts/request.sh` | host id, key hash, URL, method, JSON body, seconds | One request to a paired host's API: reads that host's token from the Keychain (`security`) and sends the request with `curl`, pinned to the key. |
+| `scripts/pair.sh` | address, key hash, JSON body, host id | Pairs: sends the pairing code's one-time secret and your Mac's name to the host, and writes the token it answers with into the Keychain (`jq`, `security`). |
+| `scripts/forget-token.sh` | host id | Deletes that host's token from the Keychain when you remove the host. |
+
+The arguments differ from call to call (a host's address, a request's path and body), so the
+directory can't read the whole command off the source. Nothing else runs under `/bin/sh`.
+
+### The other programs, each by a fixed path
+
+| Call | When | What it does |
+|---|---|---|
+| `/usr/sbin/scutil --get ComputerName` | Pairing | Reads your Mac's name, which the host shows in its list of paired clients. |
+| `/usr/bin/open <url>` | You choose Open on claude.ai, a sign-in, or Open in Claude app | Opens a session's `https://claude.ai/code/…` page, a sign-in page a host hands over (only on claude.com, claude.ai, platform.claude.com or console.anthropic.com), or `claude://code/<session>` in the Claude desktop app. |
+| `/usr/bin/osascript` | You choose Open in Terminal | Opens Terminal running `ssh -t <host> 'tmux attach -t <session> ; select-window -t @<n>'`, so you can watch a session's tmux window. The host name and the tmux command are checked against strict patterns first. |
+| `/usr/bin/env -u CLAUDE_CONFIG_DIR "/Applications/Remote Control Conductor.app/…/remote-control-conductor" mcp` | You choose Open in Claude app, and that Mac app is installed | Makes one MCP call (`open_in_claude`) to the Remote Control Conductor Mac app, a separate app by the same author (not a plugin), which knows which Claude desktop app is signed in as the session's account. It runs on your Mac and exits. Without that app, `open claude://…` is used instead. |
+
+### What it reads, and where that goes
+
+- **Its own store** (`$.store`, under `~/.claude`): the hosts you paired (name, addresses,
+  certificate fingerprint, no token) and each host's public-key hash.
+- **The Mac app's host list**, `~/Library/Application Support/ai-profiles/remote-hosts.json`, if
+  the Remote Control Conductor Mac app is installed (`$.fs.read`), so hosts paired there appear too.
+  It holds the same kind of entries: names, addresses and fingerprints. The addresses are what the
+  scripts connect to. Nothing in the file is sent anywhere.
+- **The conversation**: only calls to this plugin's own tools. The `tool.call` hook matches only
+  `mcp__remote-control-cli-servers__*` and answers those calls itself, so it never sees, changes
+  or stands in for any other tool. What Claude passes to these tools goes to the host it names, as
+  the matching request: for example a folder for `new_session`, a title for `rename_session`, the
+  text for `send_to_window`.
+
+### What it sends
+
+Only to your paired hosts, over pinned HTTPS with that host's token: the requests the pane and the
+tools make (list, start, resume, stop, rename, move or archive sessions, read or type into a tmux
+window, sign a profile in or out). When pairing, it also sends the one-time secret from the pairing
+code and your Mac's name.
+
+### Hooks
+
+- `session.start`: registers the command and the tools, and starts a 3-second timer that re-reads
+  the hosts only while the pane is open.
+- `command.run` (`/remote-control-cli-servers` only), `tool.call` (its own tools only), and
+  `ui.render`, `ui.message` and `ui.close` for its own two panes.
+
+It hooks no network or process event. The tests (`tests/conductor.test.tsx`) do hook `process.run`,
+but only to stand in for a host, answering `scripts/pin.sh` and `scripts/request.sh`. Tests don't
+run in a session.
 
 ## Install
 

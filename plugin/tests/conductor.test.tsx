@@ -1,5 +1,5 @@
-// The plugin against a fake host: the shell scripts it runs are answered
-// here (pinning, then each request by method and path), and the panes are
+// The plugin against a fake host: the scripts it runs (scripts/*.sh) are
+// answered here (pinning, then each request by method and path), and the panes are
 // mounted on the terminal and the desktop, so every tree is validated by both.
 
 import type { On } from 'claude-code'
@@ -167,10 +167,10 @@ function fakeHost(on: On, calls: Calls) {
     const ok = (stdout: string) => ({
       value: { exitCode: 0, stdout, stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
     })
-    const [, , script = '', , ...args] = e.argv
-    if (script.includes("-w '%{certs}'")) return ok('KEYHASH=\n')
-    if (script.includes('find-generic-password')) {
-      const [, , , url = '', method = 'GET'] = args
+    const [, script = '', ...args] = e.argv
+    if (script.endsWith('/scripts/pin.sh')) return ok('KEYHASH=\n')
+    if (script.endsWith('/scripts/request.sh')) {
+      const [, , url = '', method = 'GET'] = args
       const path = decodeURIComponent(new URL(url).pathname)
       calls.push(`${method} ${path}`)
       const answer = ROUTES[`${method} ${path}`]

@@ -101,7 +101,7 @@ function Pill(ui: Ui, text: string, tone: Tone) {
 function Header(ui: Ui, model: OverviewModel, act: Act) {
   const { Box, Button, Text } = ui
   const { waiting } = totals(model.view)
-  const offline = model.view.hosts.filter((h) => h.error).length
+  const offline = model.view.hosts.filter((known) => known.error).length
   return (
     <Box flexDirection="column">
       <Box justifyContent="space-between" alignItems="center">

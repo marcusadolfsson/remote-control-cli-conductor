@@ -2,6 +2,7 @@
 // parts in kit.tsx, so every dialog reads like the main pane: an icon head
 // naming what it acts on, titled sections in rounded frames, then the foot.
 
+import type { RenderElement } from 'claude-code'
 import type { ConductorDialog, ConductorHost, ConductorView } from '../../types'
 import type { DialogAct, Ui } from './act'
 
@@ -16,7 +17,7 @@ import { Check, ErrorBox, Fact, Foot, Head, Hint, Section } from './kit'
 
 /** What the pane's tab says for each dialog. */
 export function dialogTitle(dialog: ConductorDialog, view: ConductorView): string {
-  const host = (id: string) => view.hosts.find((h) => h.id === id)?.label ?? 'host'
+  const host = (id: string) => view.hosts.find((known) => known.id === id)?.label ?? 'host'
   switch (dialog.kind) {
     case 'pair':
       return 'Pair a host'
@@ -675,17 +676,32 @@ function MoveDialog(
   ]
 }
 
+/** The window's screen as shown: trimmed, without control characters. */
+const shownScreen = (d: Extract<ConductorDialog, { kind: 'window' }>) =>
+  d.screen ? trimScreen(d.screen.text).replace(/[^\P{Cc}\n\t]/gu, '') : ''
+
+/**
+ * What the terminal's live region (views/terminal.tsx) is drawn with, or null where there's none.
+ * register.tsx draws the region itself, so the directory reads its module off the hooks module.
+ */
+export function windowRegionProps(d: ConductorDialog, surface: Ui['surface']) {
+  if (d.kind !== 'window' || surface !== 'terminal' || d.isGone) return null
+  const screen = shownScreen(d)
+  return screen ? { text: screen.slice(-9000), ack: d.ack, isGone: d.isGone } : null
+}
+
 function WindowDialog(
   ui: Ui,
   d: Extract<ConductorDialog, { kind: 'window' }>,
   host: ConductorHost | undefined,
   act: DialogAct,
+  region: RenderElement | null,
 ) {
-  const { Box, Button, Client, Code, Input, Text } = ui
+  const { Box, Button, Code, Input, Text } = ui
   // The desktop doesn't draw a Client region yet: there the screen is shown, and the keys and the
-  // Type field below send input. The terminal's region takes keys typed straight into it.
+  // Type field below send input. The terminal's region (`region`) takes keys typed straight into it.
   const isDesktop = ui.surface === 'desktop'
-  const screen = d.screen ? trimScreen(d.screen.text).replace(/[^\P{Cc}\n\t]/gu, '') : ''
+  const screen = shownScreen(d)
   const isUp = Boolean(d.screen?.sessionId)
   return [
     Head(
@@ -721,12 +737,8 @@ function WindowDialog(
       </Text>
       {d.isGone ? null : screen && isDesktop ? (
         <Code source={screen.slice(-9000)} language="text" />
-      ) : screen ? (
-        <Client
-          key="term"
-          module="./terminal.tsx"
-          props={{ text: screen.slice(-9000), ack: d.ack, isGone: d.isGone }}
-        />
+      ) : screen && region ? (
+        region
       ) : (
         <Text dimColor>…</Text>
       )}
@@ -786,10 +798,16 @@ function ConfirmDialog(ui: Ui, d: Extract<ConductorDialog, { kind: 'confirm' }>,
 }
 
 /** The dialog pane's content. */
-export function Dialog(ui: Ui, dialog: ConductorDialog, view: ConductorView, act: DialogAct) {
+export function Dialog(
+  ui: Ui,
+  dialog: ConductorDialog,
+  view: ConductorView,
+  act: DialogAct,
+  region: RenderElement | null,
+) {
   const { Box } = ui
   const hostId = 'hostId' in dialog ? dialog.hostId : 'target' in dialog ? dialog.target.hostId : null
-  const host = hostId ? view.hosts.find((h) => h.id === hostId) : undefined
+  const host = hostId ? view.hosts.find((known) => known.id === hostId) : undefined
   const body = (() => {
     switch (dialog.kind) {
       case 'pair':
@@ -809,7 +827,7 @@ export function Dialog(ui: Ui, dialog: ConductorDialog, view: ConductorView, act
       case 'move':
         return MoveDialog(ui, dialog, host, act)
       case 'window':
-        return WindowDialog(ui, dialog, host, act)
+        return WindowDialog(ui, dialog, host, act, region)
       case 'confirm':
         return ConfirmDialog(ui, dialog, act)
     }

@@ -14,6 +14,8 @@ gets the same as tools.
 - **On each Linux host**, `remote-control-conductor-server`, from this project's
   [releases](https://github.com/marcusadolfsson/remote-control-cli-servers/releases), installed and
   set up as the project's README describes. The plugin does nothing until a host is paired.
+- **A network your Mac and the hosts share**: the same Tailscale tailnet, a WireGuard or other VPN,
+  or the same LAN. The plugin connects to each host directly on port 7443; nothing is relayed.
 
 ## Use
 

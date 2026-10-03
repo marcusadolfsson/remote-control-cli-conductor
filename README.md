@@ -32,6 +32,13 @@ It works in the Claude Code terminal and in the Code tab of the Claude desktop a
 
 ## Install
 
+**Your Mac has to reach each host directly,** on the server's port (7443, TCP): the same
+[Tailscale](https://tailscale.com) tailnet, a WireGuard or other VPN, or the same LAN. Nothing is
+relayed, and the server isn't meant to face the internet. It accepts connections only from the
+networks it's told to: Tailscale's addresses by default, plus any WireGuard network or LAN you add
+at setup (`allow_from` in its config). The Claude apps reach the sessions through Remote Control
+itself, so your phone doesn't need the network, only the Mac running the plugin does.
+
 **On each Linux host:** tmux 3.0 or newer, [Claude Code](https://code.claude.com), then the server
 (x86_64 or arm64) and its setup:
 

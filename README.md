@@ -60,9 +60,6 @@ claude plugin install remote-control-cli-servers@remote-control-cli-servers
 Then `/remote-control-cli-servers pair`, paste the code, and check the certificate fingerprint matches the one setup
 printed. A new code any time: `remote-control-conductor-server pair` on the host.
 
-If Claude Code says hooks modules are turned off, set `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` in its
-environment.
-
 ## Using it
 
 - `/remote-control-cli-servers` opens the pane. Every host, profile and session has a ⋯ menu of its actions, each

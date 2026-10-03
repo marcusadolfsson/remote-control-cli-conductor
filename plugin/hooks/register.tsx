@@ -1887,7 +1887,8 @@ export const register: Register = (on) => {
     const { Client } = $.ui.resolve(e)
     const regionProps = windowRegionProps(d, e.surface)
     if (!regionProps) return Dialog(ui, d, await read($, view), dialogActions($), null)
-    const region = <Client key="term" module="./terminal.tsx" props={regionProps} />
+    // Called, not written as JSX: JSX would hand Client to h, and the directory reads the path off a call.
+    const region = Client({ key: 'term', module: './terminal.tsx', props: regionProps })
     return Dialog(ui, d, await read($, view), dialogActions($), region)
   })
 }

@@ -50,5 +50,3 @@ jobs:
 
       - name: claude plugin test
         run: claude plugin test plugin
-        env:
-          CLAUDE_CODE_ENABLE_FUNCTION_HOOKS: '1'

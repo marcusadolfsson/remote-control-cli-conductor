@@ -1,11 +1,17 @@
 {
   "name": "remote-control-cli-conductor",
-  "owner": { "name": "Marcus Adolfsson" },
+  "owner": {
+    "name": "Marcus Adolfsson"
+  },
   "plugins": [
     {
-      "name": "conductor",
+      "name": "remote-control-cli-servers",
       "source": "./plugin",
       "description": "Your Linux hosts' Claude Code accounts and sessions, in a Claude Code pane"
     }
-  ]
+  ],
+  "renames": {
+    "conductor": "remote-control-cli-servers"
+  },
+  "description": "Remote Control CLI Conductor: run Claude Code on your Linux machines and manage it from Claude Code on your Mac"
 }

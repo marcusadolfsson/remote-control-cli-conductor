@@ -9,7 +9,7 @@
 //! 4. Network: what the Mac can reach the server over (Tailscale, WireGuard),
 //!    and whether to accept a LAN as well.
 //! 5. The systemd user service, lingering so it runs while logged out.
-//! 6. Pairing: a code to paste into `/conductor pair`, then waiting for the Mac.
+//! 6. Pairing: a code to paste into `/remote-control-cli-servers pair`, then waiting for the Mac.
 //!
 //! What it changes: `config.toml` (only the keys it asks about, keeping the
 //! rest of the file as written), the service unit, lingering (through `sudo`,
@@ -86,7 +86,7 @@ pub fn run(paths: &Paths) -> io::Result<()> {
     let found = accounts::discover(&config);
     if found.is_empty() {
         println!(
-            "  No profiles in {} yet. Add them once paired: /conductor, then New profile in this host's ⋯ menu.",
+            "  No profiles in {} yet. Add them once paired: /remote-control-cli-servers, then New profile in this host's ⋯ menu.",
             config.accounts_base.display()
         );
     } else {
@@ -234,7 +234,9 @@ pub fn run(paths: &Paths) -> io::Result<()> {
     }
     if ask("  Pair a Mac now?", before == 0)? {
         let issued = pairing_code::issue(&config, paths, None, Vec::new())?;
-        println!("\n  In Claude Code on your Mac, run /conductor pair and paste:\n");
+        println!(
+            "\n  In Claude Code on your Mac, run /remote-control-cli-servers pair and paste:\n"
+        );
         println!("  {}\n", issued.code);
         println!("  Addresses:   {}", issued.hosts.join(", "));
         println!("  Certificate: {}", issued.fingerprint);

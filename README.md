@@ -28,7 +28,7 @@ It works in the Claude Code terminal and in the Code tab of the Claude desktop a
   <img src="docs/screenshots/tmux-window.png" alt="A session's live tmux window, waiting on Claude's folder-trust question, with keys to answer it" width="400">
 </p>
 
-<sub>Screenshots from the Claude desktop app in demo mode (`/conductor demo`): the hosts, accounts and sessions are made up.</sub>
+<sub>Screenshots from the Claude desktop app in demo mode (`/remote-control-cli-servers demo`): the hosts, accounts and sessions are made up.</sub>
 
 ## Install
 
@@ -47,10 +47,10 @@ connect, installs a systemd user service, and prints a pairing code.
 
 ```sh
 claude plugin marketplace add marcusadolfsson/remote-control-cli-conductor
-claude plugin install conductor@remote-control-cli-conductor
+claude plugin install remote-control-cli-servers@remote-control-cli-conductor
 ```
 
-Then `/conductor pair`, paste the code, and check the certificate fingerprint matches the one setup
+Then `/remote-control-cli-servers pair`, paste the code, and check the certificate fingerprint matches the one setup
 printed. A new code any time: `remote-control-conductor-server pair` on the host.
 
 If Claude Code says hooks modules are turned off, set `CLAUDE_CODE_ENABLE_FUNCTION_HOOKS=1` in its
@@ -58,11 +58,11 @@ environment.
 
 ## Using it
 
-- `/conductor` opens the pane. Every host, profile and session has a ⋯ menu of its actions, each
+- `/remote-control-cli-servers` opens the pane. Every host, profile and session has a ⋯ menu of its actions, each
   with a letter that presses it while the menu is open.
-- `/conductor text` prints the same as text.
-- `/conductor demo` swaps in three made-up hosts, for screenshots; again to swap back.
-- Ask Claude: its tools are `mcp__conductor__*` (`list_profiles`, `list_sessions`, `new_session`,
+- `/remote-control-cli-servers text` prints the same as text.
+- `/remote-control-cli-servers demo` swaps in three made-up hosts, for screenshots; again to swap back.
+- Ask Claude: its tools are `mcp__remote-control-cli-servers__*` (`list_profiles`, `list_sessions`, `new_session`,
   `resume_session`, `restart_outdated`, `read_window`, `send_to_window`, `move_session`, …).
 
 ## How it's secured

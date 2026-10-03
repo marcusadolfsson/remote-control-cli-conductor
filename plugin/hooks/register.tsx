@@ -72,20 +72,20 @@ const NOTE_MS = 20_000
 const SIGN_IN_HOSTS = ['claude.com', 'claude.ai', 'platform.claude.com', 'console.anthropic.com']
 
 const view = atom(
-  { plugin: 'conductor', key: 'view' } as const,
+  { plugin: 'remote-control-cli-servers', key: 'view' } as const,
   {
     isLoading: false,
     hosts: [],
     updatedAt: null,
   } as ConductorView,
 )
-const selected = atom({ plugin: 'conductor', key: 'selected' } as const, null as ConductorSelection | null)
-const archived = atom({ plugin: 'conductor', key: 'archived' } as const, {} as Record<string, Array<ArchivedSession>>)
-const showAll = atom({ plugin: 'conductor', key: 'showAll' } as const, [] as Array<string>)
-const busy = atom({ plugin: 'conductor', key: 'busy' } as const, null as string | null)
-const note = atom({ plugin: 'conductor', key: 'note' } as const, null as ConductorNote | null)
-const dialog = atom({ plugin: 'conductor', key: 'dialog' } as const, null as ConductorDialog | null)
-const openMenu = atom({ plugin: 'conductor', key: 'openMenu' } as const, null as string | null)
+const selected = atom({ plugin: 'remote-control-cli-servers', key: 'selected' } as const, null as ConductorSelection | null)
+const archived = atom({ plugin: 'remote-control-cli-servers', key: 'archived' } as const, {} as Record<string, Array<ArchivedSession>>)
+const showAll = atom({ plugin: 'remote-control-cli-servers', key: 'showAll' } as const, [] as Array<string>)
+const busy = atom({ plugin: 'remote-control-cli-servers', key: 'busy' } as const, null as string | null)
+const note = atom({ plugin: 'remote-control-cli-servers', key: 'note' } as const, null as ConductorNote | null)
+const dialog = atom({ plugin: 'remote-control-cli-servers', key: 'dialog' } as const, null as ConductorDialog | null)
+const openMenu = atom({ plugin: 'remote-control-cli-servers', key: 'openMenu' } as const, null as string | null)
 
 let refreshing: Promise<void> | null = null
 let lastRefreshAt = 0
@@ -107,7 +107,7 @@ async function sh($: Engine, script: string, args: Array<string>, seconds = 60) 
 }
 
 /** The hosts: the plugin's own list, and any the Mac app paired that it hasn't seen. */
-/** Whether demo mode (`/conductor demo`) is on: made-up hosts, for screenshots. */
+/** Whether demo mode (`/remote-control-cli-servers demo`) is on: made-up hosts, for screenshots. */
 async function isDemo($: Engine): Promise<boolean> {
   return (await $.store.get('demo')) === true
 }
@@ -822,7 +822,7 @@ async function computerName($: Engine): Promise<string> {
 }
 
 async function pair($: Engine, code: string, wantedLabel: string): Promise<string> {
-  if (await isDemo($)) throw new Error('Demo mode is on: /conductor demo turns it off, then pair.')
+  if (await isDemo($)) throw new Error('Demo mode is on: /remote-control-cli-servers demo turns it off, then pair.')
   const decoded = decodePairingCode(code)
   if ('error' in decoded) throw new Error(decoded.error || "That isn't a pairing code.")
   const existing = (await pairedHosts($)).find((h) => h.fingerprint === decoded.fingerprint)
@@ -1327,7 +1327,7 @@ async function openMove($: Engine, target: ConductorTarget) {
 
 // ── Tools for Claude ──
 
-const TOOL_PREFIX = 'mcp__conductor__'
+const TOOL_PREFIX = 'mcp__remote-control-cli-servers__'
 
 /** Lists the tools for Claude; a session that takes none (`--tools ""`) refuses them, and that's fine. */
 async function registerTools($: Engine) {
@@ -1753,7 +1753,7 @@ function dialogActions($: Engine): DialogAct {
   }
 }
 
-/** The hosts as text, for `/conductor text` and where panes don't draw. */
+/** The hosts as text, for `/remote-control-cli-servers text` and where panes don't draw. */
 function summarize(current: ConductorView): string {
   return current.hosts
     .flatMap((host) => [
@@ -1774,7 +1774,7 @@ async function openPane($: Engine) {
 export const register: Register = (on) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
-      name: 'conductor',
+      name: 'remote-control-cli-servers',
       description: "Remote Control Conductor: your hosts' Claude accounts and sessions, in a pane",
       argumentHint: '[text | pair | demo]',
     })
@@ -1786,11 +1786,11 @@ export const register: Register = (on) => {
     return next(e)
   })
 
-  on('command.run', { command: 'conductor' }, async ($, e) => {
+  on('command.run', { command: 'remote-control-cli-servers' }, async ($, e) => {
     const args = e.args.trim()
     if (args === 'text') {
       await refresh($)
-      return { text: summarize(await read($, view)) || 'No hosts are paired yet: /conductor pair pairs one.' }
+      return { text: summarize(await read($, view)) || 'No hosts are paired yet: /remote-control-cli-servers pair pairs one.' }
     }
     if (args === 'demo') {
       const isOn = !(await isDemo($))
@@ -1798,7 +1798,7 @@ export const register: Register = (on) => {
       await openPane($)
       return {
         text: isOn
-          ? 'Demo mode on: made-up hosts, profiles and sessions, for screenshots. Nothing reaches a real host. /conductor demo again turns it off.'
+          ? 'Demo mode on: made-up hosts, profiles and sessions, for screenshots. Nothing reaches a real host. /remote-control-cli-servers demo again turns it off.'
           : 'Demo mode off: your hosts again.',
       }
     }

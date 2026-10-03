@@ -1,6 +1,6 @@
 //! Issuing a pairing code: a single-use secret, the addresses the Mac can
 //! reach the server at, and the certificate's fingerprint, in one string to
-//! paste into `/conductor pair`. `pair` prints one, and `setup` does too.
+//! paste into `/remote-control-cli-servers pair`. `pair` prints one, and `setup` does too.
 
 use std::io;
 

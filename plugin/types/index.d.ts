@@ -162,7 +162,7 @@ export type ConductorView = {
   isLoading: boolean
   hosts: Array<ConductorHost>
   updatedAt: number | null
-  /** Made-up hosts, for screenshots (`/conductor demo`). */
+  /** Made-up hosts, for screenshots (`/remote-control-cli-servers demo`). */
   isDemo?: boolean
 }
 
@@ -273,7 +273,7 @@ export type ConductorConfirmAction =
 
 declare module 'claude-code' {
   interface PluginState {
-    conductor: {
+    'remote-control-cli-servers': {
       view: ConductorView
       selected: ConductorSelection | null
       /** Accounts (`<host id>/<account>`) whose archived sessions are shown, with them. */

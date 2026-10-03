@@ -68,7 +68,7 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" remote-control-conductor-server-* \
             --repo "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes "$(cat <<'NOTES'
-          **Claude Code plugin:** `claude plugin marketplace add marcusadolfsson/remote-control-cli-conductor`, then `claude plugin install conductor@remote-control-cli-conductor`.
+          **Claude Code plugin:** `claude plugin marketplace add marcusadolfsson/remote-control-cli-conductor`, then `claude plugin install remote-control-cli-servers@remote-control-cli-conductor`.
 
           **Linux host:** the server for x86_64 or arm64, then its setup:
 

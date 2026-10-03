@@ -27,7 +27,7 @@ enum Command {
         #[arg(long)]
         listen: Option<std::net::SocketAddr>,
     },
-    /// Print a one-time code to pair a Mac: paste it into /conductor pair in Claude Code.
+    /// Print a one-time code to pair a Mac: paste it into /remote-control-cli-servers pair in Claude Code.
     Pair {
         /// Name the client this code will pair, e.g. "Marcus's MacBook".
         #[arg(long)]
@@ -253,7 +253,7 @@ fn pair(
     hosts: Vec<String>,
 ) -> io::Result<()> {
     let issued = pairing_code::issue(config, paths, label, hosts)?;
-    println!("In Claude Code on your Mac, run /conductor pair and paste this.");
+    println!("In Claude Code on your Mac, run /remote-control-cli-servers pair and paste this.");
     println!(
         "It works once, for the next {} minutes.\n",
         PAIRING_TTL.num_minutes()

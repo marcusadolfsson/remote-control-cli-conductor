@@ -135,7 +135,7 @@ const ROUTES: Record<string, unknown> = {
 const paneProps = (title: string, bodyColumns: number, placement: 'dock' | 'inline') =>
   ({ title, isFocused: true, bodyColumns, placement }) as never
 
-const hostsText = { command: 'conductor', args: 'text' } as never
+const hostsText = { command: 'remote-control-cli-servers', args: 'text' } as never
 
 /** Every request the plugin made, `METHOD /path`. */
 type Calls = Array<string>
@@ -182,7 +182,7 @@ function fakeHost(on: On, calls: Calls) {
 }
 
 describe('the hosts pane', () => {
-  test('/conductor text lists every account and session', async ($, on) => {
+  test('/remote-control-cli-servers text lists every account and session', async ($, on) => {
     const calls: Calls = []
     fakeHost(on, calls)
     const { text } = await $.command.run(hostsText)
@@ -198,7 +198,7 @@ describe('the hosts pane', () => {
       fakeHost(on, calls)
       await $.command.run(hostsText)
       const ui = await $.ui.mount({
-        plugin: 'conductor',
+        plugin: 'remote-control-cli-servers',
         surface,
         component: 'Pane',
         requestId: 'conductor-hosts',
@@ -234,7 +234,7 @@ describe('the hosts pane', () => {
       await ui.unmount()
 
       const narrow = await $.ui.mount({
-        plugin: 'conductor',
+        plugin: 'remote-control-cli-servers',
         surface,
         component: 'Pane',
         requestId: 'conductor-hosts',
@@ -249,7 +249,7 @@ describe('the hosts pane', () => {
       fakeHost(on, calls)
       await $.command.run(hostsText)
       const pane = await $.ui.mount({
-        plugin: 'conductor',
+        plugin: 'remote-control-cli-servers',
         surface,
         component: 'Pane',
         requestId: 'conductor-hosts',
@@ -257,7 +257,7 @@ describe('the hosts pane', () => {
       })
       const dialog = () =>
         $.ui.mount({
-          plugin: 'conductor',
+          plugin: 'remote-control-cli-servers',
           surface,
           component: 'Pane',
           requestId: 'conductor-dialog',
@@ -354,7 +354,7 @@ describe('demo mode', () => {
   test('shows made-up hosts, and never runs a request', async ($, on) => {
     const calls: Calls = []
     fakeHost(on, calls)
-    await $.command.run({ command: 'conductor', args: 'demo' } as never)
+    await $.command.run({ command: 'remote-control-cli-servers', args: 'demo' } as never)
     const { text } = await $.command.run(hostsText)
     expect(text).toContain('atlas (server 0.6.3)')
     expect(text).toContain('nebula')
@@ -362,7 +362,7 @@ describe('demo mode', () => {
     expect(text).not.toContain('orion')
     for (const surface of SURFACES) {
       const ui = await $.ui.mount({
-        plugin: 'conductor',
+        plugin: 'remote-control-cli-servers',
         surface,
         component: 'Pane',
         requestId: 'conductor-hosts',

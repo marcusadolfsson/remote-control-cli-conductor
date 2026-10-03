@@ -1,4 +1,4 @@
-// Demo mode (`/conductor demo`): three made-up hosts, their profiles and
+// Demo mode (`/remote-control-cli-servers demo`): three made-up hosts, their profiles and
 // sessions, for screenshots. Every request to a demo host is answered here,
 // so nothing reaches the network and nothing real changes.
 

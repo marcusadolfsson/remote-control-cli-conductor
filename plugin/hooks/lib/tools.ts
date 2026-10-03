@@ -1,5 +1,5 @@
 // The tools Claude gets: the host halves of Remote Control Conductor's MCP
-// tools, served by register.tsx. Listed as mcp__conductor__<name>.
+// tools, served by register.tsx. Listed as mcp__remote-control-cli-servers__<name>.
 
 import type { RemoteSession } from './wire'
 

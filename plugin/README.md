@@ -1,6 +1,6 @@
 # Remote Control CLI Servers
 
-The Claude Code plugin of [Remote Control CLI Conductor](https://github.com/marcusadolfsson/remote-control-cli-conductor):
+The Claude Code half of [Remote Control CLI Servers](https://github.com/marcusadolfsson/remote-control-cli-servers):
 your Linux machines' Claude Code accounts and sessions, in a pane beside the conversation, in the
 terminal or the Claude desktop app's Code tab. Pair hosts, see their profiles (Claude accounts) and
 sessions, start, resume, restart, stop, rename, move, archive and restore sessions, answer what a
@@ -12,7 +12,7 @@ gets the same as tools.
 - **macOS**, with Claude Code 2.1.287 or later (the desktop app's own Claude Code loads it too). The
   plugin uses tools macOS ships with; it doesn't run on Linux or Windows.
 - **On each Linux host**, `remote-control-conductor-server`, from this project's
-  [releases](https://github.com/marcusadolfsson/remote-control-cli-conductor/releases), installed and
+  [releases](https://github.com/marcusadolfsson/remote-control-cli-servers/releases), installed and
   set up as the project's README describes. The plugin does nothing until a host is paired.
 
 ## Use
@@ -59,8 +59,8 @@ the pages it opens in your browser.
 ## Install
 
 ```sh
-claude plugin marketplace add marcusadolfsson/remote-control-cli-conductor
-claude plugin install remote-control-cli-servers@remote-control-cli-conductor
+claude plugin marketplace add marcusadolfsson/remote-control-cli-servers
+claude plugin install remote-control-cli-servers@remote-control-cli-servers
 ```
 
 Or load it from a checkout for one session: `claude --plugin-dir plugin`.

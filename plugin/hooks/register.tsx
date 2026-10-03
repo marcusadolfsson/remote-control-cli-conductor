@@ -1,4 +1,4 @@
-// Remote Control Conductor in Claude Code: the hosts it paired with, their
+// Remote Control CLI Servers: the hosts it paired with, their
 // Claude accounts and sessions, in a pane beside the conversation; dialogs
 // for everything the Mac app does with them; and tools for Claude.
 //
@@ -818,7 +818,7 @@ async function openTerminal($: Engine) {
 
 async function computerName($: Engine): Promise<string> {
   const run = await $.process.run(['/usr/sbin/scutil', '--get', 'ComputerName'])
-  return run.exitCode === 0 && run.stdout.trim() ? run.stdout.trim().slice(0, 128) : 'Remote Control Conductor'
+  return run.exitCode === 0 && run.stdout.trim() ? run.stdout.trim().slice(0, 128) : 'Remote Control CLI Servers'
 }
 
 async function pair($: Engine, code: string, wantedLabel: string): Promise<string> {
@@ -1767,7 +1767,7 @@ function summarize(current: ConductorView): string {
 }
 
 async function openPane($: Engine) {
-  await $.ui.open({ id: PANE, title: 'Conductor' })
+  await $.ui.open({ id: PANE, title: 'CLI Servers' })
   void refresh($)
 }
 
@@ -1775,7 +1775,7 @@ export const register: Register = (on) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'remote-control-cli-servers',
-      description: "Remote Control Conductor: your hosts' Claude accounts and sessions, in a pane",
+      description: "Your Linux hosts' Claude accounts and sessions, in a pane",
       argumentHint: '[text | pair | demo]',
     })
     await registerTools($)
@@ -1804,7 +1804,7 @@ export const register: Register = (on) => {
     }
     await openPane($)
     if (args === 'pair') await openDialog($, { kind: 'pair', code: '', label: '', error: null, isBusy: false })
-    return { text: 'Conductor opened.' }
+    return { text: 'CLI Servers opened.' }
   })
 
   on('tool.call', async ($, e, next) => {

@@ -21,7 +21,7 @@ pub const LEGACY_UNIT_NAME: &str = "ai-profiles-server.service";
 pub fn unit_text(executable: &Path, path_env: &str) -> String {
     format!(
         "[Unit]\n\
-         Description=Remote Control CLI Conductor server: Claude sessions on this machine, for your Mac\n\
+         Description=Remote Control CLI Servers server: Claude sessions on this machine, for your Mac\n\
          After=network-online.target\n\
          \n\
          [Service]\n\

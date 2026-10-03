@@ -35,7 +35,7 @@ pub enum PairingError {
 impl std::fmt::Display for PairingError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(match self {
-            PairingError::NotACode => "that isn't a Remote Control CLI Conductor pairing code",
+            PairingError::NotACode => "that isn't a Remote Control CLI Servers pairing code",
             PairingError::Malformed => "the pairing code is damaged or from a newer server",
         })
     }

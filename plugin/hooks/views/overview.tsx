@@ -107,7 +107,7 @@ function Header(ui: Ui, model: OverviewModel, act: Act) {
       <Box justifyContent="space-between" alignItems="center">
         <Box gap={1} flexShrink={1} minWidth={0} overflow="hidden" alignItems="center">
           {Icon(ui, 'claude', 'claude', 18)}
-          <Text bold wrap="truncate-end">Remote Control CLI Conductor</Text>
+          <Text bold wrap="truncate-end">Remote Control CLI Servers</Text>
           {model.view.isDemo && Pill(ui, 'DEMO', 'permission')}
         </Box>
         <Box gap={1} flexShrink={0} alignItems="center">

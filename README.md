@@ -1,4 +1,4 @@
-# Remote Control CLI Conductor
+# Remote Control CLI Servers
 
 Run Claude Code on your Linux machines, and manage it from Claude Code on your Mac.
 
@@ -21,7 +21,7 @@ puts all of it in a pane beside the conversation:
 It works in the Claude Code terminal and in the Code tab of the Claude desktop app.
 
 <p>
-  <img src="docs/screenshots/pane.png" alt="The Conductor pane: three hosts as cards, each with its profiles and their sessions" width="400">
+  <img src="docs/screenshots/pane.png" alt="The pane: three hosts as cards, each with its profiles and their sessions" width="400">
   <img src="docs/screenshots/session-menu.png" alt="A session's menu: open in the Claude app or on claude.ai, its tmux window, restart to update, stop, rename, move" width="400">
 </p>
 <p>
@@ -36,7 +36,7 @@ It works in the Claude Code terminal and in the Code tab of the Claude desktop a
 (x86_64 or arm64) and its setup:
 
 ```sh
-mkdir -p ~/.local/bin && curl -fsSL https://github.com/marcusadolfsson/remote-control-cli-conductor/releases/latest/download/remote-control-conductor-server-$(uname -m)-linux -o ~/.local/bin/remote-control-conductor-server && chmod +x ~/.local/bin/remote-control-conductor-server
+mkdir -p ~/.local/bin && curl -fsSL https://github.com/marcusadolfsson/remote-control-cli-servers/releases/latest/download/remote-control-conductor-server-$(uname -m)-linux -o ~/.local/bin/remote-control-conductor-server && chmod +x ~/.local/bin/remote-control-conductor-server
 remote-control-conductor-server setup
 ```
 
@@ -46,8 +46,8 @@ connect, installs a systemd user service, and prints a pairing code.
 **On your Mac,** in Claude Code (2.1.287 or later):
 
 ```sh
-claude plugin marketplace add marcusadolfsson/remote-control-cli-conductor
-claude plugin install remote-control-cli-servers@remote-control-cli-conductor
+claude plugin marketplace add marcusadolfsson/remote-control-cli-servers
+claude plugin install remote-control-cli-servers@remote-control-cli-servers
 ```
 
 Then `/remote-control-cli-servers pair`, paste the code, and check the certificate fingerprint matches the one setup

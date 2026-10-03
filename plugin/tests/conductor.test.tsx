@@ -366,7 +366,7 @@ describe('demo mode', () => {
         surface,
         component: 'Pane',
         requestId: 'conductor-hosts',
-        props: paneProps('Conductor', 100, 'dock'),
+        props: paneProps('CLI Servers', 100, 'dock'),
       })
       expect(await ui.find({ type: 'Text', text: /DEMO/ })).toBeDefined()
       await ui.unmount()

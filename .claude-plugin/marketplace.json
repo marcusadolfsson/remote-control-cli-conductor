@@ -1,5 +1,5 @@
 {
-  "name": "remote-control-cli-conductor",
+  "name": "remote-control-cli-servers",
   "owner": {
     "name": "Marcus Adolfsson"
   },
@@ -13,5 +13,5 @@
   "renames": {
     "conductor": "remote-control-cli-servers"
   },
-  "description": "Remote Control CLI Conductor: run Claude Code on your Linux machines and manage it from Claude Code on your Mac"
+  "description": "Remote Control CLI Servers: run Claude Code on your Linux machines and manage it from Claude Code on your Mac"
 }

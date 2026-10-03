@@ -11,7 +11,7 @@ use conductor_server::routes::ServerState;
 use conductor_server::store::{Store, PAIRING_TTL};
 use conductor_server::{accounts, hostinfo, moves, pairing_code, serve, service, setup};
 
-/// Lets Remote Control CLI Conductor (in Claude Code on your Mac) see and start the Claude sessions on this machine.
+/// Lets Remote Control CLI Servers (in Claude Code on your Mac) see and start the Claude sessions on this machine.
 #[derive(Parser)]
 #[command(version, about)]
 struct Cli {

@@ -1,7 +1,7 @@
 [package]
 name = "remote-control-conductor-server"
 version.workspace = true
-description = "Runs on a Linux machine and lets Remote Control CLI Conductor list its Claude accounts and sessions, and start or resume them in tmux with Remote Control."
+description = "Runs on a Linux machine and lets Remote Control CLI Servers list its Claude accounts and sessions, and start or resume them in tmux with Remote Control."
 license.workspace = true
 edition.workspace = true
 publish = false

@@ -1,5 +1,5 @@
 //! remote-control-conductor-server: runs on a Linux machine as the user, and lets the
-//! Remote Control CLI Conductor plugin (and the Mac app) list that machine's
+//! Remote Control CLI Servers plugin (and the Mac app) list that machine's
 //! Claude accounts and sessions, and start and resume them in tmux with Remote Control.
 //!
 //! It speaks HTTPS with a self-signed certificate that clients pin, and each

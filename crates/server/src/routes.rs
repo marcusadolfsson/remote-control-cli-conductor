@@ -1222,7 +1222,7 @@ async fn rename_session(
             let Some(window) = window else {
                 return Err(ApiError::conflict(
                     "session_running_elsewhere",
-                    "It's running in a window the Conductor server didn't open. Rename it there with /rename, or in the Claude app.",
+                    "It's running in a window this server didn't open. Rename it there with /rename, or in the Claude app.",
                 ));
             };
             let registry = account

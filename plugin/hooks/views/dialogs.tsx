@@ -681,7 +681,7 @@ const shownScreen = (d: Extract<ConductorDialog, { kind: 'window' }>) =>
   d.screen ? trimScreen(d.screen.text).replace(/[^\P{Cc}\n\t]/gu, '') : ''
 
 /**
- * What the terminal's live region (views/terminal.tsx) is drawn with, or null where there's none.
+ * What the terminal's live region (../terminal.tsx) is drawn with, or null where there's none.
  * register.tsx draws the region itself, so the directory reads its module off the hooks module.
  */
 export function windowRegionProps(d: ConductorDialog, surface: Ui['surface']) {

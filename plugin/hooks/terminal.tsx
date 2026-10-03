@@ -8,9 +8,9 @@
 // carries every key not yet confirmed, and the hooks module skips repeats.
 
 import type { ClientModule, ClientSurface } from 'claude-code'
-import type { WindowKey } from '../lib/wire'
+import type { WindowKey } from './lib/wire'
 
-import { type TypedKey, windowKeyFor } from '../lib/keys'
+import { type TypedKey, windowKeyFor } from './lib/keys'
 
 /** What the dialog hands the region. */
 export type TerminalProps = { text: string; ack: number; isGone: boolean }

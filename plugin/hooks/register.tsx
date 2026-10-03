@@ -1886,7 +1886,8 @@ export const register: Register = (on) => {
     // The tmux window's live region, in the terminal: drawn here, where its module path is read.
     const { Client } = $.ui.resolve(e)
     const regionProps = windowRegionProps(d, e.surface)
-    const region = regionProps ? <Client key="term" module="./views/terminal.tsx" props={regionProps} /> : null
+    if (!regionProps) return Dialog(ui, d, await read($, view), dialogActions($), null)
+    const region = <Client key="term" module="./terminal.tsx" props={regionProps} />
     return Dialog(ui, d, await read($, view), dialogActions($), region)
   })
 }

@@ -305,7 +305,7 @@ describe('the hosts pane', () => {
       )
         expect(calls.filter((c) => c === 'POST /v1/accounts/Misc/windows/@8/keys').length, 'each key sent once').toBe(2)
       }
-      expect(await d.find({ key: 'key-Enter' }), 'check 3').toBeDefined()
+      expect(await d.find({ key: 'key-Up' }), 'check 3').toBeDefined()
       await d.unmount()
 
       // Move plans, with a memory conflict to decide.

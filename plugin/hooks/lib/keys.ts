@@ -3,9 +3,10 @@
 import type { WindowKey } from './wire'
 
 export const WINDOW_KEYS: ReadonlyArray<{ label: string; key: string; hotkey: string }> = [
+  { label: '←', key: 'Left', hotkey: 'h' },
+  { label: '→', key: 'Right', hotkey: 'l' },
   { label: '↑', key: 'Up', hotkey: 'k' },
   { label: '↓', key: 'Down', hotkey: 'j' },
-  { label: '⏎ Enter', key: 'Enter', hotkey: 'e' },
   { label: 'Esc', key: 'Escape', hotkey: 'x' },
   { label: 'Tab', key: 'Tab', hotkey: 't' },
   { label: '⌃C', key: 'C-c', hotkey: 'c' },

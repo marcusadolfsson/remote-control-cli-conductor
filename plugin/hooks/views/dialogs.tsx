@@ -732,34 +732,30 @@ function WindowDialog(
       )}
     </Box>,
     !d.isGone && (
-      <Box key="keys" flexDirection="column" marginTop={1}>
-        <Box columnGap={1} flexWrap="wrap" alignItems="center">
-          <Text dimColor>Send</Text>
-          {WINDOW_KEYS.map((k) => (
-            <Button key={`key-${k.key}`} label={k.label} onPress={() => act.sendKeys([{ key: k.key }])} />
-          ))}
-        </Box>
+      <Box key="keys" flexDirection="column" marginTop={1} rowGap={1}>
         <Input
           key="type"
-          label="Type "
-          placeholder="Click here and type: each key goes to the window"
+          placeholder="Type here: each key goes straight to the window"
           value={d.text}
-          submitLabel="Enter"
+          submitLabel="⏎"
           onInput={(value) => act.typeLive(value)}
           onSubmit={() => act.submitLive()}
         />
+        <Box justifyContent="space-between" alignItems="center" flexWrap="wrap" rowGap={1}>
+          <Box columnGap={1} alignItems="center">
+            {WINDOW_KEYS.map((k) => (
+              <Button key={`key-${k.key}`} plain dimColor label={k.label} onPress={() => act.sendKeys([{ key: k.key }])} />
+            ))}
+          </Box>
+          <Box columnGap={2} alignItems="center">
+            <Button key="copy" plain dimColor label="Copy attach command" onPress={act.copyAttach} />
+            <Button key="terminal" plain dimColor label="Open in Terminal" onPress={act.openTerminal} />
+          </Box>
+        </Box>
       </Box>
     ),
     ErrorBox(ui, d.error),
-    Foot(
-      ui,
-      null,
-      { label: d.launch?.attention && !isUp ? 'Leave it waiting' : 'Done', onPress: act.close },
-      <Box key="attach" gap={1}>
-        <Button key="copy" dimColor label="Copy attach command" onPress={act.copyAttach} />
-        <Button key="terminal" dimColor label="Open in Terminal" onPress={act.openTerminal} />
-      </Box>,
-    ),
+    Foot(ui, null, { label: d.launch?.attention && !isUp ? 'Leave it waiting' : 'Done', onPress: act.close }),
   ]
 }
 

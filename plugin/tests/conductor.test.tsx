@@ -280,6 +280,9 @@ describe('the hosts pane', () => {
       if (surface === 'desktop') {
         // The desktop draws no Client region yet: the screen, with the key buttons and Type field.
         expect(await d.find({ type: 'Code' }), 'screen on the desktop').toBeDefined()
+        await d.input({ key: 'type', text: 'y', kind: 'change' })
+        await d.input({ key: 'type', text: 'y', kind: 'submit' })
+        expect(calls.filter((c) => c === 'POST /v1/accounts/Misc/windows/@8/keys').length, 'a key, then Enter').toBe(2)
       } else {
         expect(await d.find({ key: 'term' }), 'typing region').toBeDefined()
         await d.post(

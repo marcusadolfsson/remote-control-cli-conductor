@@ -56,6 +56,9 @@ export type DialogAct = {
   merge: (path: string) => void
   /** Window: send keys, copy the attach command, open it in Terminal. */
   sendKeys: (keys: Array<{ key: string } | { text: string }>) => void
+  /** The live Type field: each change goes to the window as it's typed; Enter sends Enter. */
+  typeLive: (value: string) => void
+  submitLive: () => void
   copyAttach: () => void
   openTerminal: () => void
   /** Switch account: sign out instead, without signing in again. */

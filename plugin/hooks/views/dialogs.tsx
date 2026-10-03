@@ -742,11 +742,11 @@ function WindowDialog(
         <Input
           key="type"
           label="Type "
-          placeholder="Text, then Enter to send it with ⏎"
+          placeholder="Click here and type: each key goes to the window"
           value={d.text}
-          submitLabel="send"
-          onInput={(value) => act.patch({ text: value })}
-          onSubmit={(value) => act.sendKeys(value ? [{ text: value }, { key: 'Enter' }] : [{ key: 'Enter' }])}
+          submitLabel="Enter"
+          onInput={(value) => act.typeLive(value)}
+          onSubmit={() => act.submitLive()}
         />
       </Box>
     ),

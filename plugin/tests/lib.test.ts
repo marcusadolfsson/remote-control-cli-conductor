@@ -13,7 +13,7 @@ import {
   stampToIso,
 } from '../hooks/lib/format'
 import { addressOrder, findHost, mergeHosts, parseHostList } from '../hooks/lib/hosts'
-import { mergeKeys, textKeys, trimScreen, windowKeyFor } from '../hooks/lib/keys'
+import { liveEdit, mergeKeys, textKeys, trimScreen, windowKeyFor } from '../hooks/lib/keys'
 import { mcpCall, mcpResult, openedWhere } from '../hooks/lib/mac-app'
 import { automaticMemory, memoryDecisions, planSummary, progressId } from '../hooks/lib/move'
 import { accountNameHint, isValidAccountName, isValidSessionName, suffixProblem } from '../hooks/lib/names'
@@ -333,5 +333,15 @@ describe('the Mac app', () => {
     expect(openedWhere('{"openedIn":"Claude (Work)"}')).toEqual({ app: 'Claude (Work)', note: null })
     expect(mcpResult('{"jsonrpc":"2.0","id":2,"error":{"message":"nope"}}')).toEqual({ text: 'nope', isError: true })
     expect(mcpResult('garbage')).toBe(null)
+  })
+})
+
+describe('live typing', () => {
+  test('each change becomes the keys that make it', () => {
+    expect(liveEdit('', 'ls')).toEqual([{ text: 'ls' }])
+    expect(liveEdit('ls', 'ls -la')).toEqual([{ text: ' -la' }])
+    expect(liveEdit('ls -la', 'ls')).toEqual([{ key: 'BSpace' }, { key: 'BSpace' }, { key: 'BSpace' }, { key: 'BSpace' }])
+    expect(liveEdit('cat a', 'cat b')).toEqual([{ key: 'BSpace' }, { text: 'b' }])
+    expect(liveEdit('same', 'same')).toEqual([])
   })
 })

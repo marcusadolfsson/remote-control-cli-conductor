@@ -50,7 +50,7 @@ import {
 import { demoAnswer, demoHosts, isDemoHost } from './lib/demo'
 import { count, folderName, formatBytes, sessionTitle } from './lib/format'
 import { addressOrder, findHost, mergeHosts, type PairedHost, parseHostList } from './lib/hosts'
-import { mergeKeys, trimScreen } from './lib/keys'
+import { liveEdit, mergeKeys, trimScreen } from './lib/keys'
 import { MAC_APP_BINARY, mcpCall, mcpResult, openedWhere } from './lib/mac-app'
 import { type Afterwards, isRunning, memoryDecisions, progressId } from './lib/move'
 import { decodePairingCode } from './lib/pairing'
@@ -675,6 +675,7 @@ async function tidyDialog($: Engine) {
 
 async function openWindowDialog($: Engine, target: ConductorTarget, windowId: string, launch: LaunchResult | null) {
   typedUpTo = 0
+  liveTyped = ''
   await openDialog($, {
     kind: 'window',
     target,
@@ -717,7 +718,7 @@ async function readWindow($: Engine) {
   }
 }
 
-async function sendKeys($: Engine, keys: Array<WindowKey>) {
+async function sendKeys($: Engine, keys: Array<WindowKey>, isLive = false) {
   const d = await read($, dialog)
   if (d?.kind !== 'window' || keys.length === 0) return
   try {
@@ -729,11 +730,33 @@ async function sendKeys($: Engine, keys: Array<WindowKey>) {
       { keys },
       15,
     )) as WindowScreen
-    await patchDialog($, 'window', { screen, text: '', error: null })
+    await patchDialog($, 'window', isLive ? { screen, error: null } : { screen, text: '', error: null })
   } catch (err) {
     if (errorCode(err) === 'window_gone') await patchDialog($, 'window', { isGone: true })
     else await patchDialog($, 'window', { error: errorText(err, 'That key did not get through.') })
   }
+}
+
+/** What the live Type field held at its last change, and its sends in order. */
+let liveTyped = ''
+let liveSends: Promise<void> = Promise.resolve()
+
+/** The live Type field changed: type what was added, Backspace what was removed. */
+async function typeLive($: Engine, value: string) {
+  const keys = liveEdit(liveTyped, value)
+  liveTyped = value
+  await patchDialog($, 'window', { text: value })
+  if (keys.length === 0) return
+  liveSends = liveSends.then(() => sendKeys($, keys, true))
+  await liveSends
+}
+
+/** Enter in the live Type field: Enter in the window, and the field starts over. */
+async function submitLive($: Engine) {
+  liveTyped = ''
+  await patchDialog($, 'window', { text: '' })
+  liveSends = liveSends.then(() => sendKeys($, [{ key: 'Enter' }], true))
+  await liveSends
 }
 
 /** `ssh -t <host> '<tmux attach …>'`, only for the shapes the server makes. */
@@ -1714,6 +1737,8 @@ function dialogActions($: Engine): DialogAct {
     moveTo: (account) => void planMove($, account),
     merge: (path) => void mergeMemory($, path),
     sendKeys: (keys) => void sendKeys($, keys),
+    typeLive: (value) => void typeLive($, value),
+    submitLive: () => void submitLive($),
     copyAttach: () => void copyAttach($),
     openTerminal: () => void openTerminal($),
     signOut: () =>

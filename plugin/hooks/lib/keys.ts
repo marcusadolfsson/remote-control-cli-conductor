@@ -73,3 +73,18 @@ export function mergeKeys(keys: ReadonlyArray<WindowKey>): Array<WindowKey> {
   }
   return out.slice(0, 50)
 }
+
+/**
+ * What a live Type field's change sends to the window: a Backspace for each
+ * character gone since the last change, then the text added. A field edited
+ * in the middle is replayed from the first difference.
+ */
+export function liveEdit(previous: string, next: string): Array<WindowKey> {
+  const before = [...previous]
+  const after = [...next]
+  let same = 0
+  while (same < before.length && same < after.length && before[same] === after[same]) same += 1
+  const removed: Array<WindowKey> = Array.from({ length: before.length - same }, () => ({ key: 'BSpace' }))
+  const added = after.slice(same).join('')
+  return mergeKeys([...removed, ...(added ? [{ text: added }] : [])])
+}

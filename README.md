@@ -43,6 +43,8 @@ On your Mac, a Claude Code plugin (a [mod](https://code.claude.com/docs/en/plugi
 puts all of it in a pane beside the conversation, in the terminal or the Claude desktop app's Code
 tab:
 
+- **Know at a glance.** A line above the prompt says how many sessions are waiting for you and
+  how each host is doing. Press `1` to answer.
 - **See everything at once.** Every host as a card, its profiles (Claude accounts) and their
   sessions, refreshing on its own, with the ones waiting for you marked.
 - **Run sessions.** Start, resume, restart, stop, rename, archive and restore them.
@@ -96,6 +98,9 @@ matches the one setup printed. For a new code at any time, run
 
 - **`/remote-control-cli-servers`** opens the pane. Every host, profile and session has a **⋯**
   menu of its actions, each with a letter that presses it.
+- **The band above the prompt** shows the hosts in one line. Press `1` in an empty prompt to open
+  the pane, or the waiting session when only one is waiting. To turn it off, run
+  `/plugin configure remote-control-cli-servers@remote-control-cli-servers`.
 - **`/remote-control-cli-servers pair`** pairs another host.
 - **`/remote-control-cli-servers text`** prints the same as the pane, as text.
 - **`/remote-control-cli-servers demo`** swaps in three made-up hosts, for screenshots. Run it again

@@ -22,6 +22,11 @@ gets the same as tools.
 - `/remote-control-cli-servers` opens the pane: every host as a card, its profiles and their
   sessions. Each has a ⋯ menu of its actions, each with a letter that presses it while the menu is
   open. The pane reads the hosts again every 15 s while it's open.
+- **The band above the prompt** shows the hosts in one line: how many sessions are waiting for
+  you, then each host's running sessions, or that it's offline. Press `1` in an empty prompt to
+  open the pane, or the waiting session's tmux window when only one is waiting. While the band is
+  on, the plugin reads the hosts every 30 s. Turn it off with the `band` option
+  (`/plugin configure remote-control-cli-servers@remote-control-cli-servers`).
 - `/remote-control-cli-servers pair` opens the pane with the pairing dialog.
 - `/remote-control-cli-servers text` answers as text, for `claude -p`.
 - `/remote-control-cli-servers demo` swaps in three made-up hosts, for screenshots; again to swap back.
@@ -93,15 +98,19 @@ directory can't read the whole command off the source. Nothing else runs under `
 
 Only to your paired hosts, over pinned HTTPS with that host's token: the requests the pane and the
 tools make (list, start, resume, stop, rename, move or archive sessions, read or type into a tmux
-window, sign a profile in or out). When pairing, it also sends the one-time secret from the pairing
+window, sign a profile in or out), and, while the band is on, a read of each host's sessions every
+30 seconds. When pairing, it also sends the one-time secret from the pairing
 code and your Mac's name.
 
 ### Hooks
 
 - `session.start`: registers the command and the tools, and starts a 3-second timer that re-reads
-  the hosts only while the pane is open.
+  the hosts while the pane is open (every 15 s), or every 30 s for the band, or not at all when the
+  band is off and the pane is closed.
 - `command.run` (`/remote-control-cli-servers` only), `tool.call` (its own tools only), and
   `ui.render`, `ui.message` and `ui.close` for its own two panes.
+- `ui.render` for `AbovePrompt`: draws the band, beside any other plugin's band, which it passes on
+  and keeps.
 
 It hooks no network or process event. The tests (`tests/conductor.test.tsx`) do hook `process.run`,
 but only to stand in for a host, answering `scripts/pin.sh` and `scripts/request.sh`. Tests don't

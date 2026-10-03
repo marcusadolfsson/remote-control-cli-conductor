@@ -42,6 +42,7 @@ import {
   RemoteError,
   readCurl,
 } from './lib/curl'
+import { bandModel } from './lib/band'
 import { demoAnswer, demoHosts, isDemoHost } from './lib/demo'
 import { count, folderName, formatBytes, sessionTitle } from './lib/format'
 import { addressOrder, findHost, mergeHosts, type PairedHost, parseHostList } from './lib/hosts'
@@ -53,6 +54,7 @@ import { findSession, isFound, splitProfile } from './lib/refs'
 import { ARCHIVE_BODY, movedDetails, signOutBody, stopBody } from './lib/texts'
 import { sessionJson, TOOL_SPECS, toolDecisions } from './lib/tools'
 import { Dialog, dialogRows, dialogTitle, windowRegionProps } from './views/dialogs'
+import { Band } from './views/band'
 import { Overview } from './views/overview'
 
 type Engine = EngineInterface
@@ -62,6 +64,8 @@ const DIALOG = 'conductor-dialog'
 /** How often the pane looks: every tick while a session connects, else every REFRESH_MS. */
 const TICK_MS = 3_000
 const REFRESH_MS = 15_000
+/** How often the band above the prompt reads the hosts while the pane is closed. */
+const BAND_REFRESH_MS = 30_000
 const NOTE_MS = 20_000
 
 const SIGN_IN_HOSTS = ['claude.com', 'claude.ai', 'platform.claude.com', 'console.anthropic.com']
@@ -83,6 +87,8 @@ const dialog = atom({ plugin: 'remote-control-cli-servers', key: 'dialog' } as c
 const openMenu = atom({ plugin: 'remote-control-cli-servers', key: 'openMenu' } as const, null as string | null)
 
 let refreshing: Promise<void> | null = null
+/** The `band` option: the hosts in a line above the prompt. */
+let showBand = true
 let lastRefreshAt = 0
 let ticker: { cancel: () => void } | null = null
 let windowTimer: { cancel: () => void } | null = null
@@ -254,7 +260,8 @@ function refresh($: Engine): Promise<void> {
       const waiting = hosts
         .flatMap((known) => known.accounts.flatMap((a) => a.sessions))
         .filter((s) => s.running && s.waiting).length
-      $.ui.status(waiting ? `◐ ${count(waiting, 'host session')} waiting for you` : undefined)
+      // The band says it already; without the band, the status line does.
+      $.ui.status(!showBand && waiting ? `◐ ${count(waiting, 'host session')} waiting for you` : undefined)
     } catch (err) {
       await update($, view, (current) => ({ ...current, isLoading: false }))
       await setNote($, { tone: 'error', text: errorText(err) })
@@ -275,15 +282,20 @@ async function loadArchived($: Engine, key: string) {
   }
 }
 
-/** Refreshes every TICK_MS while a session connects, else every REFRESH_MS. */
+/**
+ * With the pane open: every TICK_MS while a session connects, else every REFRESH_MS. With it closed,
+ * every BAND_REFRESH_MS for the band, or not at all when the band is off.
+ */
 async function tick($: Engine) {
-  if (!(await $.ui.panes()).some((pane) => pane.id === PANE)) return
+  const isPaneOpen = (await $.ui.panes()).some((pane) => pane.id === PANE)
+  if (!isPaneOpen && !showBand) return
   const now = await $.clock.now()
   const current = await read($, view)
   const isConnecting = current.hosts.some((known) =>
     known.accounts.some((a) => a.sessions.some((s) => s.remoteControlConnecting)),
   )
-  if (isConnecting || now - lastRefreshAt >= REFRESH_MS) void refresh($)
+  const every = isPaneOpen ? REFRESH_MS : BAND_REFRESH_MS
+  if ((isPaneOpen && isConnecting) || now - lastRefreshAt >= every) void refresh($)
 }
 
 // ── Notes and actions ──
@@ -1779,7 +1791,9 @@ async function openPane($: Engine) {
   void refresh($)
 }
 
-export const register: Register = (on) => {
+export const register: Register = (on, options) => {
+  showBand = options.band !== false
+
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'remote-control-cli-servers',
@@ -1847,6 +1861,27 @@ export const register: Register = (on) => {
   on('ui.close', { id: DIALOG }, async ($, e, next) => {
     await tidyDialog($)
     return next(e)
+  })
+
+  // The band above the prompt: the hosts in one line, beside any other plugin's band.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    if (!showBand || e.props.hasSurvey || (e.surface !== 'terminal' && e.surface !== 'desktop')) return next(e)
+    const current = await read($, view)
+    if (current.hosts.length === 0) return next(e)
+    const ui = { ...$.ui.resolve(e), surface: e.surface } as Ui
+    const ours = Band(ui, bandModel(current.hosts), e.props.bodyColumns, {
+      open: () => void openPane($),
+      answer: (only) => void openWindowDialog($, only.target, only.windowId, null),
+    })
+    const theirs = await next(e)
+    if (!theirs) return ours
+    const { Box } = ui
+    return (
+      <Box flexDirection="column">
+        {theirs}
+        {ours}
+      </Box>
+    )
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {

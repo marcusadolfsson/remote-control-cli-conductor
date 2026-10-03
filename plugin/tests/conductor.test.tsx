@@ -137,6 +137,8 @@ const paneProps = (title: string, bodyColumns: number, placement: 'dock' | 'inli
 
 const hostsText = { command: 'remote-control-cli-servers', args: 'text' } as never
 
+const bandProps = (bodyColumns: number) => ({ hasSurvey: false, isWorking: false, maxRows: 10, bodyColumns }) as never
+
 /** Every request the plugin made, `METHOD /path`. */
 type Calls = Array<string>
 
@@ -161,6 +163,11 @@ function fakeHost(on: On, calls: Calls) {
     }
   })
   on('ui.status', () => ({ value: undefined }))
+  // Beneath the plugin: no other band above the prompt.
+  on('ui.render', { component: 'AbovePrompt' }, ($, e) => {
+    const { Box } = $.ui.resolve(e)
+    return Box({ key: 'another-band' })
+  })
   on('ui.open', () => ({ value: { isPlaced: true as const } }))
   on('ui.close', () => ({ value: undefined }))
   on('process.run', (_$, e) => {
@@ -348,6 +355,55 @@ describe('the hosts pane', () => {
       await pane.unmount()
     })
   }
+})
+
+describe('the band above the prompt', () => {
+  for (const surface of SURFACES) {
+    test(`says what's waiting, and opens it, on the ${surface}`, async ($, on) => {
+      const calls: Calls = []
+      fakeHost(on, calls)
+      await $.command.run(hostsText)
+      const band = await $.ui.mount({
+        plugin: 'remote-control-cli-servers',
+        surface,
+        component: 'AbovePrompt',
+        props: bandProps(120),
+      })
+      expect(await band.find({ type: 'Text', text: '1 waiting' })).toBeDefined()
+      expect(await band.find({ type: 'Text', text: 'ORION' })).toBeDefined()
+      expect(await band.find({ key: 'another-band' }), "another plugin's band stays").toBeDefined()
+      // One session waiting: the button answers it, opening its tmux window.
+      await band.press({ key: 'rccs-band-answer' })
+      expect(calls).toContain('GET /v1/accounts/Misc/windows/@8/screen')
+      await band.unmount()
+
+      // Narrow: only the totals.
+      const narrow = await $.ui.mount({
+        plugin: 'remote-control-cli-servers',
+        surface,
+        component: 'AbovePrompt',
+        props: bandProps(30),
+      })
+      expect(await narrow.find({ type: 'Text', text: 'ORION' })).toBeUndefined()
+      expect(await narrow.find({ type: 'Text', text: '1 waiting' })).toBeDefined()
+      await narrow.unmount()
+    })
+  }
+
+  test('draws nothing when its option is off', { options: { band: false } }, async ($, on) => {
+    const calls: Calls = []
+    fakeHost(on, calls)
+    await $.command.run(hostsText)
+    const band = await $.ui.mount({
+      plugin: 'remote-control-cli-servers',
+      surface: 'terminal',
+      component: 'AbovePrompt',
+      props: bandProps(120),
+    })
+    expect(await band.find({ key: 'rccs-band-open' })).toBeUndefined()
+    expect(await band.find({ key: 'rccs-band-answer' })).toBeUndefined()
+    await band.unmount()
+  })
 })
 
 describe('demo mode', () => {

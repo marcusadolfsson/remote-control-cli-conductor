@@ -13,6 +13,7 @@ import {
   stampToIso,
 } from '../hooks/lib/format'
 import { addressOrder, findHost, mergeHosts, parseHostList } from '../hooks/lib/hosts'
+import { bandDetail, bandModel, bandParts } from '../hooks/lib/band'
 import { liveEdit, mergeKeys, textKeys, trimScreen, windowKeyFor } from '../hooks/lib/keys'
 import { mcpCall, mcpResult, openedWhere } from '../hooks/lib/mac-app'
 import { automaticMemory, memoryDecisions, planSummary, progressId } from '../hooks/lib/move'
@@ -343,5 +344,61 @@ describe('live typing', () => {
     expect(liveEdit('ls -la', 'ls')).toEqual([{ key: 'BSpace' }, { key: 'BSpace' }, { key: 'BSpace' }, { key: 'BSpace' }])
     expect(liveEdit('cat a', 'cat b')).toEqual([{ key: 'BSpace' }, { text: 'b' }])
     expect(liveEdit('same', 'same')).toEqual([])
+  })
+})
+
+describe('the band', () => {
+  const host = (label: string, sessions: Array<{ running: boolean; waiting?: boolean }>, error: string | null = null) =>
+    ({
+      id: label,
+      label,
+      hostname: label,
+      address: null,
+      info: null,
+      error,
+      accounts: [
+        {
+          account: { name: 'main' },
+          error: null,
+          sessions: sessions.map((s, i) => ({
+            id: `${label}-${i}`,
+            title: `${label} ${i}`,
+            lastPrompt: null,
+            window: { session: 'ai', windowId: `@${i}`, paneId: `%${i}` },
+            ...s,
+          })),
+        },
+      ],
+    }) as never
+
+  test('counts, the one waiting session, and how much fits', () => {
+    const model = bandModel([
+      host('atlas', [{ running: true }, { running: true, waiting: true }, { running: false }]),
+      host('nebula', [{ running: true }]),
+      host('homelab', [], 'Not answering.'),
+    ])
+    expect(model.waiting).toBe(1)
+    expect(model.offline).toBe(1)
+    expect(model.only?.target).toEqual({ hostId: 'atlas', account: 'main', sessionId: 'atlas-1', title: 'atlas 1' })
+    expect(model.only?.windowId).toBe('@1')
+    const text = (detail: 'full' | 'names' | 'totals') =>
+      bandParts(model, detail)
+        .map((p) => p.text)
+        .join('')
+    expect(text('full')).toBe('1 waiting · ATLAS ● 2 ◐ 1 · NEBULA ● 1 · HOMELAB offline')
+    expect(text('names')).toBe('1 waiting · ATLAS ◐ · NEBULA ● · HOMELAB ○')
+    expect(text('totals')).toBe('1 waiting · 1 offline')
+    expect(bandDetail(model, 120)).toBe('full')
+    expect(bandDetail(model, 60)).toBe('names')
+    expect(bandDetail(model, 30)).toBe('totals')
+  })
+
+  test('nothing waiting, and two waiting', () => {
+    const quiet = bandModel([host('atlas', [{ running: true }])])
+    expect(quiet.only).toBeNull()
+    expect(bandParts(quiet, 'totals').map((p) => p.text)).toEqual(['1 host, nothing waiting'])
+    const two = bandModel([host('atlas', [{ running: true, waiting: true }, { running: true, waiting: true }])])
+    expect(two.waiting).toBe(2)
+    expect(two.only, 'the button opens the pane when more than one waits').toBeNull()
   })
 })

@@ -24,9 +24,9 @@ gets the same as tools.
   open. The pane reads the hosts again every 15 s while it's open.
 - **The band above the prompt** shows the hosts in one line: how many sessions are waiting for
   you, then each host's running sessions, or that it's offline. Press `1` in an empty prompt to
-  open the pane, or the waiting session's tmux window when only one is waiting. While the band is
-  on, the plugin reads the hosts every 30 s. Turn it off with the `band` option
-  (`/plugin configure remote-control-cli-servers@remote-control-cli-servers`).
+  open the pane (or close it), or the waiting session's tmux window when only one is waiting.
+  While the band is on, the plugin reads the hosts every 30 s. Turn it off in the pane's
+  **Settings** (`s`), which also turns demo mode on and off.
 - `/remote-control-cli-servers pair` opens the pane with the pairing dialog.
 - `/remote-control-cli-servers text` answers as text, for `claude -p`.
 - `/remote-control-cli-servers demo` swaps in three made-up hosts, for screenshots; again to swap back.
@@ -83,7 +83,7 @@ directory can't read the whole command off the source. Nothing else runs under `
 ### What it reads, and where that goes
 
 - **Its own store** (`$.store`, under `~/.claude`): the hosts you paired (name, addresses,
-  certificate fingerprint, no token) and each host's public-key hash.
+  certificate fingerprint, no token), each host's public-key hash, and the two settings (the band, demo mode).
 - **The Mac app's host list**, `~/Library/Application Support/ai-profiles/remote-hosts.json`, if
   the Remote Control Conductor Mac app is installed (`$.fs.read`), so hosts paired there appear too.
   It holds the same kind of entries: names, addresses and fingerprints. The addresses are what the

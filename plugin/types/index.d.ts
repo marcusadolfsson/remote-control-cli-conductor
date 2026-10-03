@@ -181,6 +181,7 @@ export type ConductorTarget = { hostId: string; account: string; sessionId: stri
 /** The dialog pane's content. */
 export type ConductorDialog =
   | { kind: 'pair'; code: string; label: string; error: string | null; isBusy: boolean }
+  | { kind: 'settings'; isBandOn: boolean; isDemo: boolean }
   | {
       kind: 'host'
       hostId: string
@@ -286,6 +287,10 @@ declare module 'claude-code' {
       /** The ⋯ menu that's open (`hm-…`, `am-…`, `sm-…`). */
       openMenu: string | null
       dialog: ConductorDialog | null
+      /** Whether the band above the prompt shows: the store's `band`, on unless turned off. */
+      bandOn: boolean
+      /** Whether the hosts pane is open, so the band's button closes it. */
+      paneOpen: boolean
     }
   }
 }

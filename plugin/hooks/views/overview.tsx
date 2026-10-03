@@ -112,6 +112,7 @@ function Header(ui: Ui, model: OverviewModel, act: Act) {
         </Box>
         <Box gap={1} flexShrink={0} alignItems="center">
           <Button key="refresh" plain dimColor hotkey="r" label="Refresh" onPress={act.refresh} />
+          <Button key="settings" plain dimColor hotkey="s" label="Settings" onPress={act.openSettings} />
           <Button
             key="pair"
             hotkey="p"

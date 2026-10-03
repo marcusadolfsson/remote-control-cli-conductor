@@ -390,20 +390,49 @@ describe('the band above the prompt', () => {
     })
   }
 
-  test('draws nothing when its option is off', { options: { band: false } }, async ($, on) => {
-    const calls: Calls = []
-    fakeHost(on, calls)
-    await $.command.run(hostsText)
-    const band = await $.ui.mount({
-      plugin: 'remote-control-cli-servers',
-      surface: 'terminal',
-      component: 'AbovePrompt',
-      props: bandProps(120),
+  for (const surface of SURFACES) {
+    test(`turns off in Settings, and closes the open pane, on the ${surface}`, async ($, on) => {
+      const calls: Calls = []
+      fakeHost(on, calls)
+      // The pane open: the band's button closes it.
+      await $.command.run({ command: 'remote-control-cli-servers', args: '' } as never)
+      const mountBand = () =>
+        $.ui.mount({ plugin: 'remote-control-cli-servers', surface, component: 'AbovePrompt', props: bandProps(120) })
+      let band = await mountBand()
+      expect(await band.find({ key: 'rccs-band-close' }), 'Close while the pane is open').toBeDefined()
+      await band.press({ key: 'rccs-band-close' })
+      await band.unmount()
+      band = await mountBand()
+      expect(await band.find({ key: 'rccs-band-answer' }), 'Answer once it closed').toBeDefined()
+      await band.unmount()
+
+      // Settings, from the pane's header: the band off.
+      await $.command.run({ command: 'remote-control-cli-servers', args: '' } as never)
+      const pane = await $.ui.mount({
+        plugin: 'remote-control-cli-servers',
+        surface,
+        component: 'Pane',
+        requestId: 'conductor-hosts',
+        props: paneProps('CLI Servers', 100, 'dock'),
+      })
+      await pane.press({ key: 'settings' })
+      const settings = await $.ui.mount({
+        plugin: 'remote-control-cli-servers',
+        surface,
+        component: 'Pane',
+        requestId: 'conductor-dialog',
+        props: paneProps('Settings', 90, 'inline'),
+      })
+      expect(await settings.find({ type: 'Text', text: /hosts are read every 30 seconds/ })).toBeDefined()
+      await settings.press({ key: 'band' })
+      band = await mountBand()
+      expect(await band.find({ key: 'rccs-band-close' }), 'no band once it is off').toBeUndefined()
+      expect(await band.find({ key: 'another-band' }), "another plugin's band stays").toBeDefined()
+      await band.unmount()
+      await settings.unmount()
+      await pane.unmount()
     })
-    expect(await band.find({ key: 'rccs-band-open' })).toBeUndefined()
-    expect(await band.find({ key: 'rccs-band-answer' })).toBeUndefined()
-    await band.unmount()
-  })
+  }
 })
 
 describe('demo mode', () => {

@@ -13,13 +13,5 @@
   "privacyPolicyUrl": "https://github.com/marcusadolfsson/remote-control-cli-servers/blob/main/PRIVACY.md",
   "termsOfServiceUrl": "https://github.com/marcusadolfsson/remote-control-cli-servers/blob/main/TERMS.md",
   "license": "MIT",
-  "userConfig": {
-    "band": {
-      "type": "boolean",
-      "title": "Show the hosts above the prompt",
-      "description": "A line above the prompt: sessions waiting for you, and each host's running sessions or whether it's offline. While it's on, the plugin reads your hosts every 30 seconds.",
-      "default": true
-    }
-  },
   "types": "./types/index.d.ts"
 }

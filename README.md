@@ -99,8 +99,8 @@ matches the one setup printed. For a new code at any time, run
 - **`/remote-control-cli-servers`** opens the pane. Every host, profile and session has a **⋯**
   menu of its actions, each with a letter that presses it.
 - **The band above the prompt** shows the hosts in one line. Press `1` in an empty prompt to open
-  the pane, or the waiting session when only one is waiting. To turn it off, run
-  `/plugin configure remote-control-cli-servers@remote-control-cli-servers`.
+  the pane (or close it), or the waiting session when only one is waiting. Turn it off in the
+  pane's **Settings**.
 - **`/remote-control-cli-servers pair`** pairs another host.
 - **`/remote-control-cli-servers text`** prints the same as the pane, as text.
 - **`/remote-control-cli-servers demo`** swaps in three made-up hosts, for screenshots. Run it again

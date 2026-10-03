@@ -21,6 +21,8 @@ export function dialogTitle(dialog: ConductorDialog, view: ConductorView): strin
   switch (dialog.kind) {
     case 'pair':
       return 'Pair a host'
+    case 'settings':
+      return 'Settings'
     case 'host':
       return `${host(dialog.hostId)} settings`
     case 'newAccount':
@@ -56,6 +58,26 @@ export function dialogRows(dialog: ConductorDialog): number {
 }
 
 const where = (host: ConductorHost | undefined) => [host?.hostname, host?.address].filter(Boolean).join(' · ')
+
+function SettingsDialog(ui: Ui, d: Extract<ConductorDialog, { kind: 'settings' }>, act: DialogAct) {
+  return [
+    Head(ui, 'host', 'permission', 'Settings', 'Remote Control CLI Servers, on this Mac'),
+    Section(ui, 'Band above the prompt', [
+      Check(ui, 'band', 'Show the hosts above the prompt', d.isBandOn, () => act.setBand(!d.isBandOn)),
+      Hint(
+        ui,
+        d.isBandOn
+          ? 'One line under the conversation: sessions waiting for you, and how each host is doing. The hosts are read every 30 seconds.'
+          : 'Off: nothing is read in the background, and the status line says when a session is waiting while the pane is open.',
+      ),
+    ]),
+    Section(ui, 'Demo mode', [
+      Check(ui, 'demo', 'Show made-up hosts, for screenshots', d.isDemo, () => act.setDemo(!d.isDemo)),
+      Hint(ui, "While it's on, nothing reaches a real host."),
+    ]),
+    Foot(ui, null, { label: 'Done', onPress: act.close }),
+  ]
+}
 
 function PairDialog(ui: Ui, d: Extract<ConductorDialog, { kind: 'pair' }>, act: DialogAct) {
   const { Input, Text } = ui
@@ -812,6 +834,8 @@ export function Dialog(
     switch (dialog.kind) {
       case 'pair':
         return PairDialog(ui, dialog, act)
+      case 'settings':
+        return SettingsDialog(ui, dialog, act)
       case 'host':
         return HostDialog(ui, dialog, host, act)
       case 'newAccount':

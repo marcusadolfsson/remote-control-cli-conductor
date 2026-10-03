@@ -85,10 +85,10 @@ const busy = atom({ plugin: 'remote-control-cli-servers', key: 'busy' } as const
 const note = atom({ plugin: 'remote-control-cli-servers', key: 'note' } as const, null as ConductorNote | null)
 const dialog = atom({ plugin: 'remote-control-cli-servers', key: 'dialog' } as const, null as ConductorDialog | null)
 const openMenu = atom({ plugin: 'remote-control-cli-servers', key: 'openMenu' } as const, null as string | null)
+const bandOn = atom({ plugin: 'remote-control-cli-servers', key: 'bandOn' } as const, true as boolean)
+const paneOpen = atom({ plugin: 'remote-control-cli-servers', key: 'paneOpen' } as const, false as boolean)
 
 let refreshing: Promise<void> | null = null
-/** The `band` option: the hosts in a line above the prompt. */
-let showBand = true
 let lastRefreshAt = 0
 let ticker: { cancel: () => void } | null = null
 let windowTimer: { cancel: () => void } | null = null
@@ -261,7 +261,8 @@ function refresh($: Engine): Promise<void> {
         .flatMap((known) => known.accounts.flatMap((a) => a.sessions))
         .filter((s) => s.running && s.waiting).length
       // The band says it already; without the band, the status line does.
-      $.ui.status(!showBand && waiting ? `◐ ${count(waiting, 'host session')} waiting for you` : undefined)
+      const isBandOn = await read($, bandOn)
+      $.ui.status(!isBandOn && waiting ? `◐ ${count(waiting, 'host session')} waiting for you` : undefined)
     } catch (err) {
       await update($, view, (current) => ({ ...current, isLoading: false }))
       await setNote($, { tone: 'error', text: errorText(err) })
@@ -288,7 +289,11 @@ async function loadArchived($: Engine, key: string) {
  */
 async function tick($: Engine) {
   const isPaneOpen = (await $.ui.panes()).some((pane) => pane.id === PANE)
-  if (!isPaneOpen && !showBand) return
+  // Kept in step with the store (another session may have turned the band off) and the panes.
+  const isBandOn = (await $.store.get('band')) !== false
+  if ((await read($, bandOn)) !== isBandOn) await update($, bandOn, () => isBandOn)
+  if ((await read($, paneOpen)) !== isPaneOpen) await update($, paneOpen, () => isPaneOpen)
+  if (!isPaneOpen && !isBandOn) return
   const now = await $.clock.now()
   const current = await read($, view)
   const isConnecting = current.hosts.some((known) =>
@@ -1730,6 +1735,7 @@ function viewActions($: Engine): Act {
       void update($, showAll, (list) => (list.includes(key) ? list.filter((k) => k !== key) : [...list, key]))
     },
     dismissNote: () => void setNote($, null),
+    openSettings: () => void openSettings($),
     toggleMenu: (key) => void update($, openMenu, () => key),
     resume: (t) => void resume($, t),
     restart: (t) => void restart($, t),
@@ -1751,6 +1757,8 @@ function dialogActions($: Engine): DialogAct {
     patch: (patch) => void update($, dialog, (d) => (d ? ({ ...d, ...patch } as ConductorDialog) : d)),
     submit: () => void submitDialog($),
     removeHost: (hostId) => void (async () => openDialog($, await confirmDialog($, { kind: 'removeHost', hostId })))(),
+    setBand: (isOn) => void setBand($, isOn),
+    setDemo: (isOn) => void setDemo($, isOn),
     browse: (path) => void browse($, path),
     startSignIn: () => void startSignIn($),
     openUrl: (url) => void $.process.run(['/usr/bin/open', url]),
@@ -1788,12 +1796,35 @@ function summarize(current: ConductorView): string {
 
 async function openPane($: Engine) {
   await $.ui.open({ id: PANE, title: 'CLI Servers' })
+  await update($, paneOpen, () => true)
   void refresh($)
 }
 
-export const register: Register = (on, options) => {
-  showBand = options.band !== false
+async function closePane($: Engine) {
+  await $.ui.close({ id: PANE })
+  await update($, paneOpen, () => false)
+}
 
+/** Settings: the band above the prompt on or off, kept for every session on this Mac. */
+async function setBand($: Engine, isOn: boolean) {
+  await $.store.set('band', isOn)
+  await update($, bandOn, () => isOn)
+  await patchDialog($, 'settings', { isBandOn: isOn })
+  void refresh($)
+}
+
+/** Demo mode on or off: made-up hosts, for screenshots. */
+async function setDemo($: Engine, isOn: boolean) {
+  await $.store.set('demo', isOn)
+  await patchDialog($, 'settings', { isDemo: isOn })
+  await refresh($)
+}
+
+async function openSettings($: Engine) {
+  await openDialog($, { kind: 'settings', isBandOn: await read($, bandOn), isDemo: await isDemo($) })
+}
+
+export const register: Register = (on) => {
   on('session.start', async ($, e, next) => {
     await $.command.register({
       name: 'remote-control-cli-servers',
@@ -1801,6 +1832,8 @@ export const register: Register = (on, options) => {
       argumentHint: '[text | pair | demo]',
     })
     await registerTools($)
+    const isBandOn = (await $.store.get('band')) !== false
+    await update($, bandOn, () => isBandOn)
     // One timer for the session's life, started on every load (a hot reload drops the last one);
     // it reads the hosts only while the pane is open.
     ticker?.cancel()
@@ -1816,7 +1849,7 @@ export const register: Register = (on, options) => {
     }
     if (args === 'demo') {
       const isOn = !(await isDemo($))
-      await $.store.set('demo', isOn)
+      await setDemo($, isOn)
       await openPane($)
       return {
         text: isOn
@@ -1858,6 +1891,12 @@ export const register: Register = (on, options) => {
     return { props: { text: d.screen ? trimScreen(d.screen.text).slice(-9000) : '', ack: d.ack, isGone: d.isGone } }
   })
 
+  // The pane closed by hand (Ctrl+X X) or by the band: the band's button opens it again.
+  on('ui.close', { id: PANE }, async ($, e, next) => {
+    await update($, paneOpen, () => false)
+    return next(e)
+  })
+
   on('ui.close', { id: DIALOG }, async ($, e, next) => {
     await tidyDialog($)
     return next(e)
@@ -1865,12 +1904,14 @@ export const register: Register = (on, options) => {
 
   // The band above the prompt: the hosts in one line, beside any other plugin's band.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    if (!showBand || e.props.hasSurvey || (e.surface !== 'terminal' && e.surface !== 'desktop')) return next(e)
+    if (e.props.hasSurvey || (e.surface !== 'terminal' && e.surface !== 'desktop')) return next(e)
+    if (!(await read($, bandOn))) return next(e)
     const current = await read($, view)
     if (current.hosts.length === 0) return next(e)
     const ui = { ...$.ui.resolve(e), surface: e.surface } as Ui
-    const ours = Band(ui, bandModel(current.hosts), e.props.bodyColumns, {
+    const ours = Band(ui, bandModel(current.hosts), e.props.bodyColumns, await read($, paneOpen), {
       open: () => void openPane($),
+      close: () => void closePane($),
       answer: (only) => void openWindowDialog($, only.target, only.windowId, null),
     })
     const theirs = await next(e)

@@ -1,6 +1,6 @@
 // The band above the prompt: one line about the hosts, and a button. Its
-// digit hotkey works from an empty prompt, so `1` opens the pane, or the one
-// session waiting for you, without clicking into the band first.
+// digit hotkey works from an empty prompt, so `1` opens the pane (or closes
+// it), or the one session waiting for you, without clicking into the band.
 
 import type { BandModel } from '../lib/band'
 import type { Ui } from './act'
@@ -10,6 +10,7 @@ import { Icon } from './icons'
 
 export type BandAct = {
   open: () => void
+  close: () => void
   answer: (only: NonNullable<BandModel['only']>) => void
 }
 
@@ -18,9 +19,10 @@ export type BandAct = {
  * @param ui The surface's elements.
  * @param model What the hosts come to (lib/band.ts).
  * @param columns The band's width, so the line says only what fits.
+ * @param isPaneOpen Whether the pane is open: then the button closes it.
  * @param act Opening the pane, or the waiting session's window.
  */
-export function Band(ui: Ui, model: BandModel, columns: number, act: BandAct) {
+export function Band(ui: Ui, model: BandModel, columns: number, isPaneOpen: boolean, act: BandAct) {
   const { Box, Button, Text } = ui
   const parts = bandParts(model, bandDetail(model, columns))
   const only = model.only
@@ -41,7 +43,9 @@ export function Band(ui: Ui, model: BandModel, columns: number, act: BandAct) {
         )}
       </Box>
       <Box flexShrink={0}>
-        {only ? (
+        {isPaneOpen ? (
+          <Button key="rccs-band-close" plain dimColor hotkey="1" label="Close" onPress={act.close} />
+        ) : only ? (
           <Button key="rccs-band-answer" plain hotkey="1" label="Answer" onPress={() => act.answer(only)} />
         ) : (
           <Button key="rccs-band-open" plain dimColor hotkey="1" label="Open" onPress={act.open} />

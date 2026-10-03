@@ -22,6 +22,8 @@ export type Act = {
   toggleArchived: (hostId: string, account: string) => void
   toggleShowAll: (hostId: string, account: string) => void
   dismissNote: () => void
+  /** Opens the settings dialog. */
+  openSettings: () => void
   /** Opens a row's ⋯ menu by its key, or closes the open one. */
   toggleMenu: (key: string | null) => void
 
@@ -46,6 +48,9 @@ export type DialogAct = {
   submit: () => void
   /** Pair, host settings: remove the host. */
   removeHost: (hostId: string) => void
+  /** Settings: the band above the prompt, and demo mode, each on or off at once. */
+  setBand: (isOn: boolean) => void
+  setDemo: (isOn: boolean) => void
   /** New session: go into a folder, or up. */
   browse: (path: string | null) => void
   /** Sign in: start (again), or open the page again. */

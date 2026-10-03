@@ -118,7 +118,8 @@ function Header(ui: Ui, model: OverviewModel, act: Act) {
   const offline = model.view.hosts.filter((known) => known.error).length
   return (
     <Box flexDirection="column">
-      <Box justifyContent="space-between" alignItems="center">
+      {/* Inset as far as a host card's border and padding, so this ⋯ lines up with the cards' own. */}
+      <Box justifyContent="space-between" alignItems="center" paddingRight={ui.surface === 'terminal' ? 2 : 1}>
         <Box gap={1} flexShrink={1} minWidth={0} overflow="hidden" alignItems="center">
           {Icon(ui, 'claude', 'claude', 18)}
           <Text bold wrap="truncate-end">Remote Control CLI Servers</Text>
@@ -636,8 +637,8 @@ export function Overview(ui: Ui, model: OverviewModel, act: Act) {
         <Box flexDirection="column" marginTop={1} borderStyle="round" borderColor="claude" paddingX={1}>
           <Text bold>No hosts yet</Text>
           <Text dimColor>
-            Install remote-control-conductor-server on a Linux machine where Claude Code runs, run its setup, then press
-            p (Pair a host) and paste the code it prints.
+            Install remote-control-conductor-server on a Linux machine where Claude Code runs and run its setup. Then
+            choose Pair a host in the ⋯ menu above, and paste the code it prints.
           </Text>
         </Box>
       )}
